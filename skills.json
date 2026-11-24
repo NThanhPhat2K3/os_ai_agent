@@ -1,5 +1,5 @@
 {
-  "_doc": "Single catalog of skills this standard installs for BOTH Claude Code and Codex. Edit with scripts/add-skill, not by hand. 'local' = skills/<name>; 'vendor' = git submodule pinned by commit.",
+  "_doc": "Single catalog of skills this standard installs for BOTH Claude Code and Codex. Edit with scripts/add-skill, not by hand. 'local' = skills/<name>; 'vendor' = git submodule pinned by commit. Optional per-skill 'notes' record known issues; they are shown in Agent Hub and referenced by global/AGENTS.md.",
   "vendors": {
     "superpowers": {
       "repo": "obra/superpowers",
@@ -53,7 +53,8 @@
     {
       "name": "modern-cpp",
       "source": "vendor",
-      "vendor": "trailofbits-skills"
+      "vendor": "trailofbits-skills",
+      "notes": "Targets C++20/23/26. Always use the project's pinned standard and toolchain (embedded is often C++11/14/17); only apply idioms that standard supports."
     },
     {
       "name": "karpathy-guidelines",
@@ -63,7 +64,8 @@
     {
       "name": "embedded-systems",
       "source": "vendor",
-      "vendor": "jeffallan-claude-skills"
+      "vendor": "jeffallan-claude-skills",
+      "notes": "Known issue (Codex review 2026-11-24): the UART ISR sample keeps a single-byte buffer (bytes are lost under load) and re-enables IRQs unconditionally with __enable_irq(). Use a ring buffer/queue and save/restore PRIMASK (or the RTOS critical-section API) instead."
     }
   ]
 }

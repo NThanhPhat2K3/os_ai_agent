@@ -52,3 +52,27 @@ class ChooseCommitTest(unittest.TestCase):
         c = self.commits(('a', '2026-01-31'), ('b', '2026-01-02'))
         r = choose_commit('ancient', c, 14, self.NOW)
         self.assertEqual(r['recommended'], 'b')
+
+
+class AncestryTest(unittest.TestCase):
+    """Regression for Codex review: only recommend a commit GitHub confirms is ahead of the pin."""
+    def run_check(self, relation):
+        from unittest import mock
+        from tools.skill_hub import engine
+        commits = [{'sha': 'new' + '0' * 37, 'commit': {'committer': {'date': '2026-01-01T00:00:00Z'}}}]
+        def fake_github(path):
+            return {'status': relation} if '/compare/' in path else commits
+        with mock.patch.object(engine, 'get_submodule_pin', return_value='old' + '0' * 37), \
+             mock.patch.object(engine, 'github_json', side_effect=fake_github), \
+             mock.patch.object(engine, 'skill_text', return_value='same'):
+            return engine.check_vendor('v', {'repo': 'o/r', 'path': 'vendor/v'}, [('s', 'skills/s')],
+                                       14, datetime(2026, 2, 1, tzinfo=timezone.utc))
+
+    def test_ahead_is_recommended(self):
+        r = self.run_check('ahead')
+        self.assertEqual((r['status'], r['recommended'][:3]), ('update-available', 'new'))
+
+    def test_diverged_history_is_not_recommended(self):
+        for relation in ('diverged', 'behind', 'identical'):
+            r = self.run_check(relation)
+            self.assertEqual((r['status'], r['recommended']), ('warning', None), relation)

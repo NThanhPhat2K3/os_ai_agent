@@ -120,6 +120,12 @@ def check_vendor(name, vendor, skills, cooldown, now):
     result = choose_commit(current, candidates, cooldown, now, item_id=name)
     candidate = result['recommended']
     if candidate:
+        # choose_commit only sees the latest 100 commits. Confirm with GitHub that the
+        # candidate really descends from our pin (history rewrites, other branches...).
+        relation = github_json(f"repos/{vendor['repo']}/compare/{current}...{candidate}").get('status')
+        if relation != 'ahead':
+            return {**result, 'status': 'warning', 'recommended': None,
+                    'warning': f'cannot confirm {candidate[:7]} is newer than the pin (GitHub says: {relation}); check manually'}
         # Would an enabled skill start depending on a skill we have not enabled?
         enabled = {skill for skill, _ in skills}
         missing = set()

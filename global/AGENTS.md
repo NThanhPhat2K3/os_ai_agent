@@ -20,6 +20,15 @@ Project-level `AGENTS.md` / `CLAUDE.md` add to or override these rules.
 - Never write eFuses / option bytes / lock bits. Tell the user the exact command and let them run it.
 - Both agents enforce this: Claude via `~/.claude/settings.json` permissions, Codex via `~/.codex/rules/embedded-safety.rules`. These are guard rails, not a security boundary.
 
+## Third-party skills
+- Precedence: project rules (`AGENTS.md`/`CLAUDE.md` in the repo) > these global rules > skill instructions.
+- The project's language standard and toolchain always win. Never raise the C/C++ standard, add
+  dependencies or change compiler flags because a skill suggests it; propose it to the user instead.
+- Code samples in skills are illustrative, not production firmware. Check them against the datasheet,
+  RTOS docs and the project's existing patterns before reuse (especially ISRs, critical sections,
+  DMA and concurrency).
+- Known issues per skill are listed in the `notes` field of `skills.json` in the os_ai_agent repo.
+
 ## Working with the other agent
 - Claude ⇄ Codex cross-review is encouraged for non-trivial changes: the writer should not be the only reviewer.
 - Claude → Codex: `/codex:review`, `/codex:rescue`, or skill `ask-codex-live` (visible in the user's open Codex session).

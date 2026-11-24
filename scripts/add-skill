@@ -67,20 +67,34 @@ def pick_commit(repo, cooldown):
 
 
 def undo_vendor(path):
-    """Remove a submodule this run just added, so a failed add leaves no trace."""
+    """Remove a submodule this run just added, so a failed add leaves no trace.
+
+    Order matters: deinit, drop the gitlink from the index, then the .gitmodules
+    section, then the working tree and .git/modules copies.
+    """
     if not path:
         return
-    subprocess.run(['git', '-C', str(ROOT), 'submodule', 'deinit', '-q', '-f', '--', path], capture_output=True)
-    subprocess.run(['git', '-C', str(ROOT), 'rm', '-q', '-f', '--', path], capture_output=True)
-    module_dir = ROOT / '.git' / 'modules' / path
-    if module_dir.is_dir() and str(module_dir.resolve()).startswith(str((ROOT / '.git' / 'modules').resolve())):
-        import shutil
-        shutil.rmtree(module_dir)
+    import shutil
+    run = lambda *a: subprocess.run(['git', '-C', str(ROOT), *a], capture_output=True)
+    run('submodule', 'deinit', '-q', '-f', '--', path)
+    run('rm', '-q', '--cached', '-f', '--', path)
+    run('config', '-f', '.gitmodules', '--remove-section', f'submodule.{path}')
+    gm = ROOT / '.gitmodules'
+    if gm.exists() and not gm.read_text().strip():
+        run('rm', '-q', '-f', '--', '.gitmodules')
+    elif gm.exists():
+        run('add', '.gitmodules')
+    for leftover in (ROOT / path, ROOT / '.git' / 'modules' / path):
+        if leftover.exists() and str(leftover.resolve()).startswith(str(ROOT.resolve())):
+            shutil.rmtree(leftover)
     print(f'  ↺ removed submodule {path}')
 
 
 def check_ref_age(repo, ref, cooldown, allow_young):
-    info = github_json(f'repos/{repo}/commits/{ref}')
+    try:
+        info = github_json(f'repos/{repo}/commits/{ref}')
+    except (subprocess.CalledProcessError, OSError, ValueError):
+        sys.exit(f'--ref {ref[:7]} not found in {repo}. Nothing was changed.')
     when = datetime.fromisoformat(info['commit']['committer']['date'].replace('Z', '+00:00'))
     age = (datetime.now(timezone.utc) - when).days
     if age < cooldown:
@@ -112,6 +126,8 @@ def add(args):
         sys.exit('skill name must be lowercase letters, digits and dashes')
     if args.ref and not SHA.fullmatch(args.ref):
         sys.exit('--ref must be a full 40-character commit SHA')
+    if not SAFE_DIR.fullmatch(args.skills_dir):
+        sys.exit('--skills-dir must be a plain relative path inside the repo')
     data = load()
     if any(s['name'] == args.skill for s in data['skills']):
         sys.exit(f'{args.skill} is already in skills.json')
@@ -136,17 +152,19 @@ def add(args):
         if args.dry_run:
             print('[dry-run] stopping before any change.')
             return
-        git('submodule', 'add', f'https://github.com/{args.repo}', path)
-        git('checkout', '-q', ref, cwd=ROOT / path)
-        git('add', path)          # record the PINNED commit, not the branch head
-        created_vendor = path
+        created_vendor = path     # from here on, any failure must undo the submodule
+        try:
+            git('submodule', 'add', f'https://github.com/{args.repo}', path)
+            git('checkout', '-q', ref, cwd=ROOT / path)
+            git('add', path)      # record the PINNED commit, not the branch head
+        except subprocess.CalledProcessError as error:
+            undo_vendor(created_vendor)
+            sys.exit(f'git failed: {error.stderr.strip() or error}. Nothing was changed.')
         vendor = {'repo': args.repo, 'path': path, 'skills_dir': args.skills_dir, 'ref_prefix': f'{name}:'}
         data['vendors'][vendor_name] = vendor
     else:
         print(f'= reusing vendor {vendor_name} at {git("rev-parse", "--short", "HEAD", cwd=ROOT / path)}')
 
-    if not SAFE_DIR.fullmatch(args.skills_dir):
-        sys.exit('--skills-dir must be a plain relative path inside the repo')
     entry = {'name': args.skill, 'source': 'vendor', 'vendor': vendor_name}
     if args.skills_dir != vendor['skills_dir']:
         entry['skills_dir'] = args.skills_dir     # e.g. one plugin folder per skill

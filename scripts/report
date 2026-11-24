@@ -68,7 +68,7 @@ def collect_skills():
         out.append({'name': item['name'], 'group': 'managed', 'origin': vendor.get('repo', 'os_ai_agent (tự viết)'),
                     'pin': git('rev-parse', '--short', 'HEAD', cwd=ROOT / vendor['path']) if vendor else
                            git('log', '-1', '--format=%cs', '--', f'skills/{item["name"]}'),
-                    'description': fm.get('description', ''), 'text': text, 'claude': links['claude'],
+                    'description': fm.get('description', ''), 'notes': item.get('notes', ''), 'text': text, 'claude': links['claude'],
                     'codex': links['codex'], 'ok': bool(got) and all(links.values())})
         managed.add(item['name'])
     for key, root in ROOTS.items():
@@ -166,6 +166,7 @@ nav button[aria-selected=true]{background:var(--acc);border-color:var(--acc);col
 .tags{display:flex;gap:6px;flex-wrap:wrap}.tag{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--mut)}
 .tag.claude{border-color:var(--claude);color:var(--claude)}.tag.codex{border-color:var(--codex);color:var(--codex)}
 .tag.bad{border-color:var(--bad);color:var(--bad)}
+.card p.note{color:var(--warn);-webkit-line-clamp:4}
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}input[type=search]{flex:1;min-width:200px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit}
 h2{font-size:16px;margin:22px 0 10px}
 table{width:100%;border-collapse:collapse;background:var(--card);border-radius:14px;overflow:hidden;border:1px solid var(--line)}
@@ -207,7 +208,7 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('section').forEach(s => s.hidden = s.id !== 'tab-' + b.dataset.tab); });
 const dlg = document.getElementById('dlg');
 function openSkill(s) { document.getElementById('dlg-title').textContent = s.name + ' — ' + s.origin;
-  document.getElementById('dlg-body').textContent = s.text || '(không đọc được SKILL.md)'; dlg.showModal(); }
+  document.getElementById('dlg-body').textContent = (s.notes ? '⚠️ GHI CHÚ: ' + s.notes + '\n\n' : '') + (s.text || '(không đọc được SKILL.md)'); dlg.showModal(); }
 
 // ---- Skills
 (() => { const box = document.getElementById('tab-skills'); const S = D.skills;
@@ -228,6 +229,7 @@ function openSkill(s) { document.getElementById('dlg-title').textContent = s.nam
       .map(s => $('div', {class: 'card', tabindex: 0, onclick: () => openSkill(s), onkeydown: e => e.key === 'Enter' && openSkill(s)},
         $('h3', {}, s.name), $('div', {class: 'muted mono'}, s.origin + (s.pin ? ' @ ' + s.pin : '')),
         $('p', {}, s.description || '—'),
+        s.notes ? $('p', {class: 'note'}, '⚠️ ' + s.notes) : null,
         $('div', {class: 'tags'}, s.claude ? $('span', {class: 'tag claude'}, 'Claude') : null,
           s.codex ? $('span', {class: 'tag codex'}, 'Codex') : null, s.ok ? null : $('span', {class: 'tag bad'}, 'link lỗi'))))); } }
   q.oninput = render; render(); })();
