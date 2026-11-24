@@ -84,7 +84,7 @@ def remove(name, dry):
         save(data)
     print(f"{'[dry-run] ' if dry else ''}removed {name} from skills.json.")
     print('Next: scripts/doctor.sh will flag the now-stale links; remove them with '
-          f'`rm ~/.claude/skills/{name} ~/.agents/skills/{name}` (they are symlinks), then commit.')
+          f'`rm ~/.claude/skills/{name} ~/.agents/skills/{name}` (they are symlinks), then commit and push.')
 
 
 def add(args):
@@ -155,7 +155,9 @@ def add(args):
     data['skills'].append({'name': args.skill, 'source': 'vendor', 'vendor': vendor_name})
     save(data)
     print(f'+ {args.skill} added to skills.json ({len(text.splitlines())} lines in SKILL.md)')
-    print('Next: read the SKILL.md, scripts/doctor.sh, ask the other agent to review, commit, scripts/install.sh')
+    print('Next: read the SKILL.md, scripts/doctor.sh, ask the other agent to review, scripts/install.sh,')
+    print(f'      then COMMIT AND PUSH:  git add -A && git commit -m "Add skill {args.skill}" && git push')
+    print('      (public repo: check `git diff --cached` for secrets first)')
 
 
 def main():

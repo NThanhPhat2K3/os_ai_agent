@@ -126,7 +126,12 @@ scripts/add-skill owner/repo ten-skill --dry-run   # kiểm tra SKILL.md, trùng
 scripts/add-skill owner/repo ten-skill             # submodule pin commit ≥14 ngày + ghi skills.json
 scripts/add-skill --remove ten-skill
 ```
-Quy trình: đọc SKILL.md → `scripts/doctor.sh` → nhờ agent còn lại review → commit → `scripts/install.sh` → push.
+Quy trình: đọc SKILL.md → `scripts/doctor.sh` → nhờ agent còn lại review → `scripts/install.sh` → **commit và push ngay**:
+```bash
+git add -A && git commit -m "Add skill ten-skill" && git push
+```
+> 📌 **Luôn commit + push sau khi thêm, gỡ hay cập nhật skill**, để máy khác chỉ cần `git pull`.
+> Repo đang **public**: trước khi push, xem lại `git diff --cached` và đảm bảo không có bí mật, API key hay code công ty.
 Nguồn uy tín: `anthropics/skills`, `obra/superpowers`, `hesreallyhim/awesome-claude-code`, skills.sh.
 
 ## 🔄 Cập nhật
@@ -134,7 +139,7 @@ Nguồn uy tín: `anthropics/skills`, `obra/superpowers`, `hesreallyhim/awesome-
 Phiên bản nằm ở `pins.json` và commit của các submodule trong `vendor/`. Không có gì tự cập nhật.
 1. `scripts/check-updates` (hoặc tab Cập nhật) để xem đề xuất.
 2. Sửa `pins.json`, hoặc `git -C vendor/<repo> checkout <sha>`.
-3. `scripts/doctor.sh`, nhờ agent còn lại review, commit, `scripts/install.sh` (với token tools: `--with-token-tools`).
+3. `scripts/doctor.sh`, nhờ agent còn lại review, `scripts/install.sh` (với token tools: `--with-token-tools`), rồi **commit và push**.
 
 **Đồng bộ giữa các máy:** máy nào sửa thì commit + push; máy khác chỉ cần
 `git pull --recurse-submodules && scripts/install.sh && scripts/doctor.sh`.

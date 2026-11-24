@@ -34,7 +34,7 @@ Follow these steps in order. Stop and ask the user whenever a step says ASK.
 
 Never: run `scripts/install.sh` without the dry run first; edit files under `~/.claude`,
 `~/.codex` or `~/.agents` by hand (use the scripts); delete backups in `~/.local/state/os_ai_agent`;
-flash or touch hardware; push to git without being asked.
+flash or touch hardware; push unrelated or unreviewed changes.
 
 ## If you change this repo
 
@@ -46,3 +46,7 @@ flash or touch hardware; push to git without being asked.
 - Cross-review: ask the other agent to review non-trivial changes (skills `ask-claude` /
   `ask-codex-live`), at most two rounds, and show the user both sides.
 - Commit messages in English; end with the co-author line your harness requires.
+- **Standing instruction from Phát: after adding, removing or updating a skill (or a pin), once
+  doctor and tests pass and the review is done, commit AND push to `origin main` right away**,
+  so every machine can `git pull`. The repo is PUBLIC: before pushing, check the diff for secrets,
+  API keys, company code or private data, and stop to ask if anything looks sensitive.
