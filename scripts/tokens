@@ -10,12 +10,14 @@ HUB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="$HOME/.local/share/os_ai_agent/node/node_modules/.bin"
 pin() { python3 "$HUB/tools/skill_hub/pins.py" "$HUB/pins.json" "$1"; }
 
-if [[ ! -x "$BIN/ccusage" || ! -x "$BIN/tokscale" ]]; then
-  echo "Token tools not installed. Run: $HUB/scripts/install.sh --with-token-tools" >&2
-  exit 2
-fi
-if ! "$BIN/ccusage" --version 2>/dev/null | grep -qF "$(pin ccusage)"; then
-  echo "Installed ccusage does not match pins.json ($(pin ccusage)). Re-run install.sh --with-token-tools." >&2
+tools_match() { # both binaries present AND both versions match pins.json
+  [[ -x "$1/ccusage" && -x "$1/tokscale" ]] \
+    && "$1/ccusage" --version 2>/dev/null | grep -qF "$(pin ccusage)" \
+    && "$1/tokscale" --version 2>/dev/null | grep -qF "$(pin tokscale)"
+}
+if ! tools_match "$BIN"; then
+  echo "Token tools missing or not at pins.json versions (ccusage $(pin ccusage), tokscale $(pin tokscale))." >&2
+  echo "Run: $HUB/scripts/install.sh --with-token-tools" >&2
   exit 2
 fi
 

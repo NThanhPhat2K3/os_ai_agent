@@ -158,8 +158,12 @@ if ((WITH_TOKENS)); then
   # After this, scripts/tokens runs these local binaries and never fetches from the network.
   TOOLS_DIR="$HOME/.local/share/os_ai_agent/node"
   pin() { python3 "$HUB/tools/skill_hub/pins.py" "$HUB/pins.json" "$1"; }
-  if [[ -x "$TOOLS_DIR/node_modules/.bin/ccusage" && -x "$TOOLS_DIR/node_modules/.bin/tokscale" ]] \
-     && "$TOOLS_DIR/node_modules/.bin/ccusage" --version 2>/dev/null | grep -qF "$(pin ccusage)"; then
+  tools_match() { # both binaries present AND both versions match pins.json
+    [[ -x "$1/ccusage" && -x "$1/tokscale" ]] \
+      && "$1/ccusage" --version 2>/dev/null | grep -qF "$(pin ccusage)" \
+      && "$1/tokscale" --version 2>/dev/null | grep -qF "$(pin tokscale)"
+  }
+  if tools_match "$TOOLS_DIR/node_modules/.bin"; then
     say "  = token tools already installed in $TOOLS_DIR"
   else
     [[ -e "$TOOLS_DIR" ]] || note "NPMDIR	$TOOLS_DIR"

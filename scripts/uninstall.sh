@@ -50,8 +50,14 @@ PY
         if run "$a" mcp remove "$b" >/dev/null 2>&1; then echo "  - $a mcp: $b"; else keep "$line" "$a mcp remove $b failed"; fi
       else keep "$line" "$a mcp $b was reconfigured by the user"; fi ;;
     NPMDIR) # a=private npm prefix created by install.sh (only ever this exact path)
-      if [[ "$a" == "$HOME/.local/share/os_ai_agent/node" && -d "$a" ]]; then run rm -rf -- "$a"; echo "  - $a"
-      else keep "$line" "unexpected NPMDIR path $a"; fi ;;
+      # Remove only what npm created; keep the folder if the user put anything else in it.
+      if [[ "$a" != "$HOME/.local/share/os_ai_agent/node" ]]; then keep "$line" "unexpected NPMDIR path $a"
+      elif [[ ! -d "$a" ]]; then echo "  · $a already gone"
+      else
+        for f in node_modules package.json package-lock.json; do [[ -e "$a/$f" ]] && run rm -rf -- "$a/$f"; done
+        if ((DRY)) || rmdir -- "$a" 2>/dev/null; then echo "  - $a"
+        else keep "$line" "$a has extra files, left in place"; fi
+      fi ;;
     UVTOOL) # a=package
       if run uv tool uninstall "$a" >/dev/null 2>&1; then echo "  - uv tool: $a"; else keep "$line" "uv tool uninstall $a failed"; fi ;;
     "") ;;
