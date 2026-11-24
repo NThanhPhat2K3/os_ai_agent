@@ -1,0 +1,4 @@
+# Never commit memory data, logs, or local state
+memory/
+*.log
+.state/

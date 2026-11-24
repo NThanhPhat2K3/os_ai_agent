@@ -1,0 +1,14 @@
+{
+  "deny": [
+    "Bash(espefuse.py:*)", "Bash(espefuse:*)",
+    "Bash(idf.py efuse-burn:*)", "Bash(idf.py efuse-burn-key:*)", "Bash(idf.py efuse-write-protect:*)",
+    "Bash(idf.py efuse-read-protect:*)", "Bash(idf.py efuse-burn-custom-mac:*)"
+  ],
+  "ask": [
+    "Bash(idf.py flash:*)", "Bash(idf.py app-flash:*)", "Bash(idf.py bootloader-flash:*)",
+    "Bash(idf.py partition-table-flash:*)", "Bash(idf.py erase-flash:*)", "Bash(idf.py erase-otadata:*)",
+    "Bash(idf.py monitor:*)", "Bash(idf.py -p:*)", "Bash(idf.py --port:*)",
+    "Bash(esptool.py:*)", "Bash(esptool:*)", "Bash(openocd:*)", "Bash(probe-rs:*)", "Bash(pyocd:*)",
+    "Bash(st-flash:*)", "Bash(st-info:*)", "Bash(JLinkExe:*)", "Bash(nrfjprog:*)", "Bash(avrdude:*)", "Bash(dfu-util:*)"
+  ]
+}

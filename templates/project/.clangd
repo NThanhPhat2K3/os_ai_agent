@@ -1,0 +1,9 @@
+# clangd project config. Shared by editors, Claude's clangd plugin and Serena.
+# NOTE: cross-compilers need clangd started with --query-driver=<path-to-gcc>
+#   (a clangd launch argument, NOT a .clangd key), e.g.
+#   --query-driver=$HOME/.espressif/tools/xtensa-esp-elf/*/xtensa-esp-elf/bin/xtensa-*-gcc
+CompileFlags:
+  CompilationDatabase: build
+  # Remove GCC-only flags clangd does not understand (ESP-IDF/Xtensa examples).
+  # This only silences parsing errors; it does NOT make clangd model Xtensa exactly.
+  Remove: [-mlongcalls, -fstrict-volatile-bitfields, -fno-tree-switch-conversion, -mdisable-hardware-atomics]

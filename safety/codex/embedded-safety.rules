@@ -1,0 +1,36 @@
+# Embedded safety rules (written by Claude, agreed with Codex, 2026-11-24).
+# Goal: never touch real hardware without asking; never burn eFuses.
+# Prefix rules are a guard rail, not a security boundary: also restrict
+# device access at OS level (e.g. only add yourself to `dialout` when needed).
+
+# ---- FORBIDDEN: irreversible eFuse operations ----
+prefix_rule(
+    pattern = [["espefuse.py", "espefuse"]],
+    decision = "forbidden",
+    justification = "eFuse writes are irreversible and can brick the chip. Ask the user to run it manually.",
+    match = ["espefuse.py --port /dev/ttyUSB0 burn_efuse JTAG_DISABLE", "espefuse summary"],
+)
+
+prefix_rule(
+    pattern = ["idf.py", ["efuse-burn", "efuse-burn-key", "efuse-write-protect", "efuse-read-protect", "efuse-burn-custom-mac"]],
+    decision = "forbidden",
+    justification = "eFuse writes are irreversible. Use `idf.py efuse-summary` to read, and ask the user to burn manually.",
+    match = ["idf.py efuse-burn", "idf.py efuse-burn-key BLOCK_KEY0 key.bin"],
+    not_match = ["idf.py efuse-summary", "idf.py build"],
+)
+
+# ---- PROMPT: anything that talks to a real board ----
+prefix_rule(
+    pattern = ["idf.py", ["flash", "app-flash", "bootloader-flash", "partition-table-flash", "erase-flash", "erase-otadata", "monitor", "-p", "--port"]],
+    decision = "prompt",
+    justification = "Touches a connected board. Ask the user first.",
+    match = ["idf.py flash", "idf.py -p /dev/ttyUSB0 flash monitor", "idf.py erase-flash"],
+    not_match = ["idf.py build", "idf.py menuconfig", "idf.py set-target esp32s3"],
+)
+
+prefix_rule(
+    pattern = [["esptool.py", "esptool", "openocd", "probe-rs", "pyocd", "st-flash", "st-info", "JLinkExe", "nrfjprog", "avrdude", "dfu-util"]],
+    decision = "prompt",
+    justification = "Flash/debug tool that can modify a connected device. Ask the user first.",
+    match = ["esptool.py --chip esp32 write_flash 0x0 fw.bin", "openocd -f board/esp32-wrover-kit-3.3v.cfg", "probe-rs download fw.elf"],
+)
