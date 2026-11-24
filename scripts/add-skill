@@ -61,6 +61,19 @@ def pick_commit(repo, cooldown):
     return r['recommended']
 
 
+def check_ref_age(repo, ref, cooldown, allow_young):
+    info = github_json(f'repos/{repo}/commits/{ref}')
+    when = datetime.fromisoformat(info['commit']['committer']['date'].replace('Z', '+00:00'))
+    age = (datetime.now(timezone.utc) - when).days
+    if age < cooldown:
+        msg = f'--ref {ref[:7]} is only {age} day(s) old (< {cooldown}).'
+        if not allow_young:
+            sys.exit(msg + ' Re-run with --allow-young if you accept the risk.')
+        print('  ! ' + msg + ' Accepted because of --allow-young.')
+    else:
+        print(f'  = --ref {ref[:7]} is {age} days old')
+
+
 def remove(name, dry):
     data = load()
     before = len(data['skills'])
@@ -90,8 +103,13 @@ def add(args):
     if vendor and vendor['repo'] != args.repo:
         sys.exit(f'vendor name {vendor_name} already used by {vendor["repo"]}')
     path = f'vendor/{vendor_name}'
+    if vendor and args.ref:
+        sys.exit(f'{vendor_name} is already vendored at a pinned commit; --ref would be ignored. '
+                 'Move the pin with the update flow (scripts/check-updates) instead.')
     if not vendor:
         ref = args.ref or pick_commit(args.repo, args.cooldown)
+        if args.ref:
+            check_ref_age(args.repo, args.ref, args.cooldown, args.allow_young)
         print(f'+ submodule {args.repo} -> {path} @ {ref[:7]}')
         if args.dry_run:
             print('[dry-run] stopping before any change.')
@@ -147,6 +165,7 @@ def main():
     ap.add_argument('--skills-dir', default='skills')
     ap.add_argument('--ref')
     ap.add_argument('--cooldown', type=int, default=14)
+    ap.add_argument('--allow-young', action='store_true', help='accept a --ref younger than the cooldown')
     ap.add_argument('--remove', metavar='SKILL')
     ap.add_argument('--dry-run', action='store_true')
     args = ap.parse_args()

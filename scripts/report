@@ -287,8 +287,17 @@ def main():
     payload = json.dumps(data, ensure_ascii=False).replace('</', '<\\/')   # safe inside <script>
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(PAGE.replace('__DATA__', payload), encoding='utf-8')
-    os.chmod(out, 0o600)   # contains skill text and usage numbers: keep private
+    # Private from the first byte: create the temp file with mode 600, then atomically
+    # replace. os.replace swaps a symlink at `out` itself instead of writing through it.
+    tmp = out.with_name(f'.{out.name}.{os.getpid()}.tmp')
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(PAGE.replace('__DATA__', payload))
+        os.replace(tmp, out)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     print(f'Report: {out}')
     if not args.no_open:
         webbrowser.open(out.as_uri())
