@@ -15,17 +15,21 @@ echo "== os_ai_agent uninstall$( ((DRY)) && echo ' [DRY RUN]')"
 REMAIN="$(mktemp)"; trap 'rm -f "$REMAIN"' EXIT
 mcp_fp() { "$1" mcp get "$2" 2>/dev/null | grep -viE '^[[:space:]]*status:' | sha256sum | cut -d' ' -f1; }
 keep() { printf '%s\n' "$1" >> "$REMAIN"; echo "  ~ kept: $2"; }
+# In --dry-run nothing is really removed, so remember what WOULD be gone; otherwise a later
+# BACKUP restore into that slot is wrongly reported as "occupied".
+declare -A GONE=()
+present() { [[ -z "${GONE[$1]:-}" ]] && [[ -e "$1" || -L "$1" ]]; }
 
 while IFS= read -r line; do
   IFS=$'\t' read -r kind a b c <<< "$line"
   case "$kind" in
     LINK)   # a=target b=source: remove only if it is still our link
-      if [[ -L "$a" && "$(readlink "$a")" == "$b" ]]; then run rm "$a"; echo "  - $a"
+      if [[ -L "$a" && "$(readlink "$a")" == "$b" ]]; then run rm "$a"; GONE[$a]=1; echo "  - $a"
       elif [[ ! -e "$a" && ! -L "$a" ]]; then echo "  · $a already gone"
       else keep "$line" "$a changed since install"; fi ;;
     BACKUP) # a=original path b=backup path: restore only into a free slot
       if [[ ! -e "$b" ]]; then keep "$line" "backup $b missing"
-      elif [[ -e "$a" || -L "$a" ]]; then keep "$line" "$a is occupied; backup stays at $b"
+      elif present "$a"; then keep "$line" "$a is occupied; backup stays at $b"
       else run mkdir -p "$(dirname "$a")"; run mv "$b" "$a"; echo "  ↺ restored $a"; fi ;;
     PERM)   # a=kind b=rule: remove only the rule we added, keep user edits
       if ((DRY)); then echo "  [dry-run] remove permission $a: $b"; else
