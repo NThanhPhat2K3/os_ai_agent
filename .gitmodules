@@ -1,3 +1,12 @@
 [submodule "vendor/superpowers"]
 	path = vendor/superpowers
 	url = https://github.com/obra/superpowers
+[submodule "vendor/trailofbits-skills"]
+	path = vendor/trailofbits-skills
+	url = https://github.com/trailofbits/skills
+[submodule "vendor/multica-ai-andrej-karpathy-skills"]
+	path = vendor/multica-ai-andrej-karpathy-skills
+	url = https://github.com/multica-ai/andrej-karpathy-skills
+[submodule "vendor/jeffallan-claude-skills"]
+	path = vendor/jeffallan-claude-skills
+	url = https://github.com/Jeffallan/claude-skills

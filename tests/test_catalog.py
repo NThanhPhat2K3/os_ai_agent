@@ -72,3 +72,27 @@ class CalendarTest(unittest.TestCase):
         self.assertEqual(cal[-1], {'day': '2026-01-10'})            # nothing used today -> empty
         self.assertEqual(cal[-2]['codex']['totalTokens'], 5)
         self.assertNotIn('2026-01-01', [d['day'] for d in cal])     # older than 7 days -> excluded
+
+
+class SafePathTest(unittest.TestCase):
+    def test_safe_dir_rejects_traversal(self):
+        from tools.skill_hub.catalog import SAFE_DIR
+        for ok in ('skills', 'plugin/skills', 'plugins/modern-cpp/skills'):
+            self.assertTrue(SAFE_DIR.fullmatch(ok), ok)
+        for bad in ('../x', 'a/../b', '/etc', 'a//b', '.', './a', ''):
+            self.assertFalse(SAFE_DIR.fullmatch(bad), bad)
+
+    def test_per_skill_dir_overrides_vendor_and_unsafe_is_rejected(self):
+        from tools.skill_hub.catalog import load, skill_rel_dir
+        with tempfile.TemporaryDirectory() as tmp:
+            vend = {'v': {'repo': 'o/r', 'path': 'vendor/v', 'skills_dir': 'skills'}}
+            Path(tmp, 'skills.json').write_text(json.dumps({'vendors': vend, 'skills': [
+                {'name': 'a', 'source': 'vendor', 'vendor': 'v'},
+                {'name': 'b', 'source': 'vendor', 'vendor': 'v', 'skills_dir': 'plugins/b/skills'}]}))
+            data = load(tmp)
+            self.assertEqual(skill_rel_dir(data, data['skills'][0]), 'skills/a')
+            self.assertEqual(skill_rel_dir(data, data['skills'][1]), 'plugins/b/skills/b')
+            Path(tmp, 'skills.json').write_text(json.dumps({'vendors': vend, 'skills': [
+                {'name': 'c', 'source': 'vendor', 'vendor': 'v', 'skills_dir': '../../etc'}]}))
+            with self.assertRaises(ValueError):
+                load(tmp)

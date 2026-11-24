@@ -32,8 +32,8 @@ def choose_release(current, releases, cooldown=14, now=None):
             'latest': valid[0][1], 'recommended': eligible[0][1] if eligible else None}
 
 
-def new_dependencies(old, new, enabled):
-    pattern = r'superpowers:([a-z0-9-]+)'
+def new_dependencies(old, new, enabled, prefix='superpowers:'):
+    pattern = re.escape(prefix) + r'([a-z0-9-]+)'
     return set(re.findall(pattern, new)) - set(re.findall(pattern, old)) - set(enabled)
 
 import concurrent.futures
@@ -45,8 +45,7 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-from tools.skill_hub.catalog import enabled as _enabled, load as _load_catalog
-ENABLED = frozenset(_enabled(_load_catalog(ROOT), 'superpowers'))
+from tools.skill_hub.catalog import load as _load_catalog, skill_rel_dir as _skill_rel_dir
 NPM = 'https://registry.npmjs.org/'
 PYPI = 'https://pypi.org/pypi/'
 GITHUB = 'https://api.github.com/'
@@ -77,7 +76,7 @@ def check_package(name, pin, cooldown, now):
     return {'id': name, 'current': pin, **choose_release(pin, versions, cooldown, now)}
 
 
-def choose_commit(current, candidates, cooldown=14, now=None):
+def choose_commit(current, candidates, cooldown=14, now=None, item_id='superpowers'):
     """Pick an upgrade target from commits listed newest first (GitHub order).
 
     Only commits NEWER than `current` are considered, so this can never suggest a
@@ -86,7 +85,7 @@ def choose_commit(current, candidates, cooldown=14, now=None):
     now = now or datetime.now(timezone.utc)
     shas = [sha for sha, _ in candidates]
     newer = candidates[:shas.index(current)] if current in shas else candidates
-    base = {'id': 'superpowers', 'current': current, 'latest': shas[0] if shas else current}
+    base = {'id': item_id, 'current': current, 'latest': shas[0] if shas else current}
     if not newer:
         return {**base, 'status': 'up-to-date', 'recommended': None}
     eligible = [sha for sha, when in newer if when <= now and (now - when).total_seconds() >= cooldown * 86400]
@@ -99,8 +98,9 @@ def run_git(*args):
     return subprocess.run(['git', '-C', str(ROOT), *args], check=True, capture_output=True, text=True, timeout=10).stdout.strip()
 
 
-def get_submodule_pin():
-    return run_git('rev-parse', 'HEAD:vendor/superpowers')
+def get_submodule_pin(path='vendor/superpowers'):
+    # ':path' reads the gitlink from the index, so a freshly staged pin is checked too.
+    return run_git('rev-parse', f':{path}')
 
 
 def github_json(path):
@@ -110,31 +110,33 @@ def github_json(path):
     return get_json(GITHUB + path)
 
 
-def check_superpowers(cooldown, now):
-    current = get_submodule_pin()
-    commits = github_json('repos/obra/superpowers/commits?sha=main&per_page=100')
+def check_vendor(name, vendor, skills, cooldown, now):
+    """Upgrade check for one vendored repo. `skills` = [(skill name, path inside the repo)]."""
+    current = get_submodule_pin(vendor['path'])
+    commits = github_json(f"repos/{vendor['repo']}/commits?per_page=100")
     if not isinstance(commits, list) or not commits:
         raise ValueError('GitHub returned no commits')
     candidates = [(item['sha'], datetime.fromisoformat(item['commit']['committer']['date'].replace('Z', '+00:00'))) for item in commits]
-    result = choose_commit(current, candidates, cooldown, now)
+    result = choose_commit(current, candidates, cooldown, now, item_id=name)
     candidate = result['recommended']
     if candidate:
-        # Would the enabled trio start depending on a skill we have not enabled?
+        # Would an enabled skill start depending on a skill we have not enabled?
+        enabled = {skill for skill, _ in skills}
         missing = set()
-        for skill in sorted(ENABLED):
-            old = skill_text(current, skill)
-            new = skill_text(candidate, skill)
+        for skill, rel in sorted(skills):
+            old = skill_text(vendor['repo'], current, rel)
+            new = skill_text(vendor['repo'], candidate, rel)
             if old != new:
                 result.setdefault('changed_skills', []).append(skill)
-            missing |= new_dependencies(old, new, ENABLED)
+            missing |= new_dependencies(old, new, enabled, vendor.get('ref_prefix', f'{name}:'))
         if missing:
             result['status'] = 'warning'
             result['warning'] = 'enabled skills now require: ' + ', '.join(sorted(missing))
     return result
 
 
-def skill_text(ref, skill):
-    url = f'https://raw.githubusercontent.com/obra/superpowers/{ref}/skills/{skill}/SKILL.md'
+def skill_text(repo, ref, rel_dir):
+    url = f'https://raw.githubusercontent.com/{repo}/{ref}/{rel_dir}/SKILL.md'
     request = urllib.request.Request(url, headers={'User-Agent': 'os-ai-agent-skill-hub'})
     try:
         with urllib.request.urlopen(request, timeout=10) as response:
@@ -150,7 +152,11 @@ def checks(cooldown=14):
         pins = json.load(source)
     now = datetime.now(timezone.utc)
     jobs = [(key, lambda key=key: check_package(key, pins[key], cooldown, now)) for key in (*NPM_PACKAGES, *PYPI_PACKAGES) if key in pins]
-    jobs.append(('superpowers', lambda: check_superpowers(cooldown, now)))
+    catalog = _load_catalog(ROOT)
+    for vname, vendor in catalog['vendors'].items():
+        skills = [(s['name'], _skill_rel_dir(catalog, s)) for s in catalog['skills'] if s.get('vendor') == vname]
+        if skills:
+            jobs.append((vname, lambda vname=vname, vendor=vendor, skills=skills: check_vendor(vname, vendor, skills, cooldown, now)))
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(jobs)) as pool:
         futures = [(name, pool.submit(fn)) for name, fn in jobs]

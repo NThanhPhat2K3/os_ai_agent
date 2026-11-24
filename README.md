@@ -91,15 +91,14 @@ Tùy chọn: `--with-token-tools` (ccusage + tokscale), `--with-serena`, `--with
    /plugin install codex@openai-codex
    /codex:setup
    ```
-3. Kiểm tra: hỏi Codex *"bạn có những skill nào?"*. Phải thấy `ask-claude`, `ask-codex-live`,
-   `systematic-debugging`, `test-driven-development`, `verification-before-completion`.
+3. Kiểm tra: hỏi Codex *"bạn có những skill nào?"*. Phải thấy đủ 8 skill trong `skills.json`.
 
 ### 7. Checklist: thế nào là xong ✅
 
 - [ ] `scripts/doctor.sh` kết thúc bằng `0 problem(s)`.
 - [ ] `python3 -m unittest` báo `OK`.
-- [ ] Mở Claude Code: gõ `/skills` (hoặc hỏi *"bạn có những skill nào?"*) thấy 5 skill chung.
-- [ ] Mở **session Codex mới**: hỏi *"bạn có những skill nào?"* thấy 5 skill chung.
+- [ ] Mở Claude Code: gõ `/skills` (hoặc hỏi *"bạn có những skill nào?"*) thấy 8 skill chung.
+- [ ] Mở **session Codex mới**: hỏi *"bạn có những skill nào?"* thấy 8 skill chung.
 - [ ] Thử chặn an toàn: nhờ Claude chạy `espefuse.py --version`, phải bị **từ chối**.
 - [ ] Claude gọi được Codex: gõ `/codex:review` trong một repo bất kỳ.
 - [ ] Codex gọi được Claude: trong Codex nói *"dùng skill ask-claude hỏi Claude 1+1 bằng mấy"*.
@@ -150,6 +149,9 @@ Ledger và backup nằm ở `~/.local/state/os_ai_agent/`. Mục nào bạn đã
 |---|---|---|
 | `ask-claude`, `ask-codex-live` | Bật (tự viết) | Claude ⇄ Codex gọi nhau; `ask-codex-live` gửi vào session Codex đang mở để bạn xem realtime |
 | superpowers: `systematic-debugging`, `test-driven-development`, `verification-before-completion` | Bật chọn lọc | Bộ ba khép kín. `writing-plans` kéo theo 3 skill khác nên chưa bật |
+| `embedded-systems` (Jeffallan/claude-skills, MIT, 12.5k★) | Bật | Firmware MCU, RTOS, ngắt, DMA, tiết kiệm năng lượng (STM32, ESP32, FreeRTOS) |
+| `modern-cpp` (trailofbits/skills, CC-BY-SA-4.0, 8.4k★) | Bật | C++ hiện đại hướng an toàn. Luôn theo chuẩn C++ của dự án (embedded thường C++11/14/17) |
+| `karpathy-guidelines` (multica-ai/andrej-karpathy-skills, MIT, 235k★) | Bật | Chống lỗi hay gặp của AI: làm quá tay, sửa lan man, giả định ngầm |
 | Context7 (`upstash/context7`) | Bật (tắt bằng `--no-context7`) | Tài liệu thư viện đúng phiên bản. Vẫn phải đối chiếu header/SDK thật |
 | ccusage, tokscale | Tùy chọn `--with-token-tools` | Báo cáo / dashboard token, offline, tắt telemetry, ẩn cột tiền |
 | Serena, basic-memory | Tùy chọn | Điều hướng code qua clangd; trí nhớ chung ở `~/agent-memory` (ngoài git) |
@@ -168,7 +170,11 @@ git add -A && git commit -m "Add skill ten-skill" && git push
 ```
 > 📌 **Luôn commit + push sau khi thêm, gỡ hay cập nhật skill**, để máy khác chỉ cần `git pull`.
 > Repo đang **public**: trước khi push, xem lại `git diff --cached` và đảm bảo không có bí mật, API key hay code công ty.
-Nguồn uy tín: `anthropics/skills`, `obra/superpowers`, `hesreallyhim/awesome-claude-code`, skills.sh.
+Nguồn uy tín: `anthropics/skills`, `obra/superpowers`, `trailofbits/skills`, `Jeffallan/claude-skills`,
+`addyosmani/agent-skills`, `hesreallyhim/awesome-claude-code`, skills.sh.
+Repo để mỗi skill trong một thư mục plugin riêng (như Trail of Bits) thì dùng `--skills-dir plugins/<tên>/skills`.
+Nếu bị báo *no SKILL.md at the pinned commit*: cấu trúc repo 14 ngày trước khác bây giờ, xem bằng
+`gh api "repos/OWNER/REPO/git/trees/<sha>?recursive=1" --jq '.tree[].path' | grep SKILL.md`.
 
 ## 🔄 Cập nhật
 

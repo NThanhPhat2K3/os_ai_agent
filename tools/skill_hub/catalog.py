@@ -7,6 +7,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 NAME = re.compile(r'[a-z0-9][a-z0-9-]{0,63}')
+# Relative path made of plain segments: no '..', no absolute paths, no empty parts.
+SAFE_DIR = re.compile(r'(?!.*(?:^|/)\.\.?(?:/|$))[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*')
 
 
 def load(root=ROOT):
@@ -18,14 +20,26 @@ def load(root=ROOT):
         seen.add(skill['name'])
         if skill['source'] == 'vendor' and skill.get('vendor') not in data['vendors']:
             raise ValueError(f"unknown vendor for {skill['name']}")
+        for key in ('skills_dir',):
+            if key in skill and not SAFE_DIR.fullmatch(skill[key]):
+                raise ValueError(f"unsafe {key} for {skill['name']}: {skill[key]!r}")
+    for name, vendor in data['vendors'].items():
+        if not SAFE_DIR.fullmatch(vendor['skills_dir']) or not SAFE_DIR.fullmatch(vendor['path']):
+            raise ValueError(f'unsafe path in vendor {name}')
     return data
+
+
+def skill_rel_dir(data, skill):
+    """Skill folder relative to its vendor repo root (per-skill skills_dir overrides the vendor's)."""
+    vendor = data['vendors'][skill['vendor']]
+    return f"{skill.get('skills_dir', vendor['skills_dir'])}/{skill['name']}"
 
 
 def skill_dir(data, skill, root=ROOT):
     if skill['source'] == 'local':
         return Path(root) / 'skills' / skill['name']
     vendor = data['vendors'][skill['vendor']]
-    return Path(root) / vendor['path'] / vendor['skills_dir'] / skill['name']
+    return Path(root) / vendor['path'] / skill_rel_dir(data, skill)
 
 
 def enabled(data, vendor):

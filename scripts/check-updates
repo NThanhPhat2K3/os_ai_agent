@@ -32,20 +32,21 @@ def main():
         print(json.dumps(results, indent=2, ensure_ascii=False))
     else:
         color = sys.stdout.isatty()
-        print(f"{'Thành phần':<14} {'Đang dùng':<10} {'Mới nhất':<10} {'Đề xuất':<10} Trạng thái")
-        print('-' * 70)
+        W = max(14, *(len(r['id']) for r in results))
+        print(f"{'Thành phần':<{W}} {'Đang dùng':<10} {'Mới nhất':<10} {'Đề xuất':<10} Trạng thái")
+        print('-' * (W + 56))
         for r in results:
             status = r['status']
             label = LABELS.get(status, status)
             if color:
                 label = f"\033[{COLORS.get(status, '0')}m{label}\033[0m"
-            print(f"{r['id']:<14} {short(r.get('current')):<10} {short(r.get('latest')):<10} "
+            print(f"{r['id']:<{W}} {short(r.get('current')):<10} {short(r.get('latest')):<10} "
                   f"{short(r.get('recommended')):<10} {label}")
             for extra in ('warning', 'error'):
                 if r.get(extra):
-                    print(f"{'':<14} ↳ {r[extra]}")
+                    print(f"{'':<{W}} ↳ {r[extra]}")
             if r.get('changed_skills'):
-                print(f"{'':<14} ↳ skill thay đổi: {', '.join(r['changed_skills'])}")
+                print(f"{'':<{W}} ↳ skill thay đổi: {', '.join(r['changed_skills'])}")
         print('\nCách cập nhật: sửa pins.json (hoặc checkout submodule), chạy scripts/doctor.sh, '
               'nhờ agent còn lại review, rồi commit. Không có gì được tự động áp dụng.')
     statuses = {r['status'] for r in results}

@@ -23,7 +23,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from tools.skill_hub.catalog import NAME, load  # noqa: E402
+from tools.skill_hub.catalog import NAME, SAFE_DIR, load  # noqa: E402
 from tools.skill_hub.engine import choose_commit, github_json  # noqa: E402
 
 REPO = re.compile(r'[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+')
@@ -53,12 +53,30 @@ def save(data):
 
 
 def pick_commit(repo, cooldown):
-    commits = github_json(f'repos/{repo}/commits?per_page=100')
-    cands = [(c['sha'], datetime.fromisoformat(c['commit']['committer']['date'].replace('Z', '+00:00'))) for c in commits]
-    r = choose_commit('', cands, cooldown, datetime.now(timezone.utc))
-    if not r['recommended']:
+    """Newest commit on the default branch that is at least `cooldown` days old.
+
+    Asks GitHub directly with ?until=<cutoff>, so very active repos (100+ commits in
+    the last weeks) still get a correct, old-enough pin.
+    """
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=cooldown)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    commits = github_json(f'repos/{repo}/commits?until={cutoff}&per_page=1')
+    if not commits:
         sys.exit(f'No commit of {repo} is at least {cooldown} days old; pass --ref explicitly if you accept that.')
-    return r['recommended']
+    return commits[0]['sha']
+
+
+def undo_vendor(path):
+    """Remove a submodule this run just added, so a failed add leaves no trace."""
+    if not path:
+        return
+    subprocess.run(['git', '-C', str(ROOT), 'submodule', 'deinit', '-q', '-f', '--', path], capture_output=True)
+    subprocess.run(['git', '-C', str(ROOT), 'rm', '-q', '-f', '--', path], capture_output=True)
+    module_dir = ROOT / '.git' / 'modules' / path
+    if module_dir.is_dir() and str(module_dir.resolve()).startswith(str((ROOT / '.git' / 'modules').resolve())):
+        import shutil
+        shutil.rmtree(module_dir)
+    print(f'  ↺ removed submodule {path}')
 
 
 def check_ref_age(repo, ref, cooldown, allow_young):
@@ -98,11 +116,15 @@ def add(args):
     if any(s['name'] == args.skill for s in data['skills']):
         sys.exit(f'{args.skill} is already in skills.json')
 
-    vendor_name = args.repo.split('/')[1].lower()
+    owner, name = args.repo.lower().split('/')
+    # Reuse an existing vendor for this exact repo; otherwise name it owner-repo so two
+    # repos called "skills" (anthropics/skills, trailofbits/skills) never collide.
+    vendor_name = next((k for k, v in data['vendors'].items() if v['repo'].lower() == args.repo.lower()), f'{owner}-{name}')
     vendor = data['vendors'].get(vendor_name)
     if vendor and vendor['repo'] != args.repo:
         sys.exit(f'vendor name {vendor_name} already used by {vendor["repo"]}')
     path = f'vendor/{vendor_name}'
+    created_vendor = None
     if vendor and args.ref:
         sys.exit(f'{vendor_name} is already vendored at a pinned commit; --ref would be ignored. '
                  'Move the pin with the update flow (scripts/check-updates) instead.')
@@ -116,15 +138,24 @@ def add(args):
             return
         git('submodule', 'add', f'https://github.com/{args.repo}', path)
         git('checkout', '-q', ref, cwd=ROOT / path)
-        vendor = {'repo': args.repo, 'path': path, 'skills_dir': args.skills_dir, 'ref_prefix': f'{vendor_name}:'}
+        git('add', path)          # record the PINNED commit, not the branch head
+        created_vendor = path
+        vendor = {'repo': args.repo, 'path': path, 'skills_dir': args.skills_dir, 'ref_prefix': f'{name}:'}
         data['vendors'][vendor_name] = vendor
     else:
         print(f'= reusing vendor {vendor_name} at {git("rev-parse", "--short", "HEAD", cwd=ROOT / path)}')
 
-    sdir = ROOT / vendor['path'] / vendor['skills_dir'] / args.skill
+    if not SAFE_DIR.fullmatch(args.skills_dir):
+        sys.exit('--skills-dir must be a plain relative path inside the repo')
+    entry = {'name': args.skill, 'source': 'vendor', 'vendor': vendor_name}
+    if args.skills_dir != vendor['skills_dir']:
+        entry['skills_dir'] = args.skills_dir     # e.g. one plugin folder per skill
+    sdir = ROOT / vendor['path'] / args.skills_dir / args.skill
     md = sdir / 'SKILL.md'
     if not md.is_file():
-        sys.exit(f'no SKILL.md at {md.relative_to(ROOT)} (wrong --skills-dir?). Submodule left for you to inspect.')
+        undo_vendor(created_vendor)
+        sys.exit(f'no SKILL.md at {md.relative_to(ROOT)} at the pinned commit (wrong --skills-dir, or the repo '
+                 'layout was different then?). Nothing was changed.')
     text = md.read_text(encoding='utf-8', errors='replace')
     fm = frontmatter(text)
     problems, warnings = [], []
@@ -148,11 +179,12 @@ def add(args):
     if problems:
         for p in problems:
             print('  ✘ ' + p)
-        sys.exit('not added.')
+        undo_vendor(created_vendor)
+        sys.exit('not added. Nothing was changed.')
     if args.dry_run:
         print(f'[dry-run] would add {args.skill} to skills.json')
         return
-    data['skills'].append({'name': args.skill, 'source': 'vendor', 'vendor': vendor_name})
+    data['skills'].append(entry)
     save(data)
     print(f'+ {args.skill} added to skills.json ({len(text.splitlines())} lines in SKILL.md)')
     print('Next: read the SKILL.md, scripts/doctor.sh, ask the other agent to review, scripts/install.sh,')
