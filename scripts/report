@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from tools.skill_hub.catalog import load, skill_dir  # noqa: E402
+from tools.skill_hub.catalog import agents_of, load, skill_dir  # noqa: E402
 
 HOME = Path.home()
 ROOTS = {'claude': HOME / '.claude/skills', 'codex': HOME / '.agents/skills',
@@ -61,15 +61,17 @@ def collect_skills():
         got = read_skill(d)
         text, fm = got if got else ('', {})
         vendor = data['vendors'].get(item.get('vendor', ''), {})
+        targets = agents_of(item)
         links = {}
-        for agent in ('claude', 'codex'):
+        for agent in targets:
             p = ROOTS[agent] / item['name']
             links[agent] = p.is_symlink() and p.resolve() == d.resolve()
         out.append({'name': item['name'], 'group': 'managed', 'origin': vendor.get('repo', 'os_ai_agent (tự viết)'),
                     'pin': git('rev-parse', '--short', 'HEAD', cwd=ROOT / vendor['path']) if vendor else
                            git('log', '-1', '--format=%cs', '--', f'skills/{item["name"]}'),
-                    'description': fm.get('description', ''), 'notes': item.get('notes', ''), 'text': text, 'claude': links['claude'],
-                    'codex': links['codex'], 'ok': bool(got) and all(links.values())})
+                    'description': fm.get('description', ''), 'notes': item.get('notes', ''), 'text': text,
+                    'claude': links.get('claude', False), 'codex': links.get('codex', False),
+                    'ok': bool(got) and all(links.values())})
         managed.add(item['name'])
     for key, root in ROOTS.items():
         if not root.is_dir():
@@ -215,7 +217,7 @@ function openSkill(s) { document.getElementById('dlg-title').textContent = s.nam
   const managed = S.filter(s => s.group === 'managed');
   box.append($('div', {class: 'tiles'},
     $('div', {class: 'tile'}, $('b', {}, managed.length), $('small', {}, 'skill dùng chung (skills.json)')),
-    $('div', {class: 'tile'}, $('b', {}, managed.filter(s => s.ok).length + '/' + managed.length), $('small', {}, 'đã link đủ cho Claude + Codex')),
+    $('div', {class: 'tile'}, $('b', {}, managed.filter(s => s.ok).length + '/' + managed.length), $('small', {}, 'đã link đúng agent')),
     $('div', {class: 'tile'}, $('b', {}, S.filter(s => s.group !== 'managed').length), $('small', {}, 'skill riêng / hệ thống'))));
   const q = $('input', {type: 'search', placeholder: '🔎 Tìm skill theo tên hoặc mô tả…'});
   box.append($('div', {class: 'toolbar'}, q));

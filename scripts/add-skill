@@ -23,7 +23,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from tools.skill_hub.catalog import NAME, SAFE_DIR, load  # noqa: E402
+from tools.skill_hub.catalog import AGENTS, NAME, SAFE_DIR, load  # noqa: E402
 from tools.skill_hub.engine import choose_commit, github_json  # noqa: E402
 
 REPO = re.compile(r'[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+')
@@ -128,6 +128,9 @@ def add(args):
         sys.exit('--ref must be a full 40-character commit SHA')
     if not SAFE_DIR.fullmatch(args.skills_dir):
         sys.exit('--skills-dir must be a plain relative path inside the repo')
+    targets = [a for a in AGENTS if a in args.agents.split(',')]
+    if not targets or set(args.agents.split(',')) - set(AGENTS):
+        sys.exit('--agents must be claude, codex or claude,codex')
     data = load()
     if any(s['name'] == args.skill for s in data['skills']):
         sys.exit(f'{args.skill} is already in skills.json')
@@ -175,6 +178,8 @@ def add(args):
         print(f'= reusing vendor {vendor_name} at {git("rev-parse", "--short", "HEAD", cwd=ROOT / path)}')
 
     entry = {'name': args.skill, 'source': 'vendor', 'vendor': vendor_name}
+    if targets != list(AGENTS):
+        entry['agents'] = targets
     if args.skills_dir != vendor['skills_dir']:
         entry['skills_dir'] = args.skills_dir     # e.g. one plugin folder per skill
     sdir = ROOT / vendor['path'] / args.skills_dir / args.skill
@@ -190,7 +195,8 @@ def add(args):
         problems.append(f"frontmatter name is {fm.get('name')!r}, expected {args.skill!r}")
     if not fm.get('description'):
         problems.append('frontmatter has no description (agents could not decide when to use it)')
-    for home in (Path.home() / '.claude/skills', Path.home() / '.agents/skills', Path.home() / '.codex/skills'):
+    homes = {'claude': [Path.home() / '.claude/skills'], 'codex': [Path.home() / '.agents/skills', Path.home() / '.codex/skills']}
+    for home in [h for a in targets for h in homes[a]]:
         other = home / args.skill
         if other.exists() and not str(other.resolve()).startswith(str(ROOT)):
             warnings.append(f'name clash with existing {other}')
@@ -226,6 +232,7 @@ def main():
     ap.add_argument('--skills-dir', default='skills')
     ap.add_argument('--ref')
     ap.add_argument('--cooldown', type=int, default=14)
+    ap.add_argument('--agents', default='claude,codex', help='comma list: claude,codex (default both)')
     ap.add_argument('--allow-young', action='store_true', help='accept a --ref younger than the cooldown')
     ap.add_argument('--remove', metavar='SKILL')
     ap.add_argument('--dry-run', action='store_true')

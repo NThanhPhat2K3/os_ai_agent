@@ -24,16 +24,34 @@
       "path": "vendor/jeffallan-claude-skills",
       "skills_dir": "skills",
       "ref_prefix": "claude-skills:"
+    },
+    "openai-skills": {
+      "repo": "openai/skills",
+      "path": "vendor/openai-skills",
+      "skills_dir": "skills/.curated",
+      "ref_prefix": "skills:"
+    },
+    "anthropics-skills": {
+      "repo": "anthropics/skills",
+      "path": "vendor/anthropics-skills",
+      "skills_dir": "skills",
+      "ref_prefix": "skills:"
     }
   },
   "skills": [
     {
       "name": "ask-claude",
-      "source": "local"
+      "source": "local",
+      "agents": [
+        "codex"
+      ]
     },
     {
       "name": "ask-codex-live",
-      "source": "local"
+      "source": "local",
+      "agents": [
+        "claude"
+      ]
     },
     {
       "name": "systematic-debugging",
@@ -66,6 +84,69 @@
       "source": "vendor",
       "vendor": "jeffallan-claude-skills",
       "notes": "Known issue (Codex review 2026-11-24): the UART ISR sample keeps a single-byte buffer (bytes are lost under load) and re-enables IRQs unconditionally with __enable_irq(). Use a ring buffer/queue and save/restore PRIMASK (or the RTOS critical-section API) instead."
+    },
+    {
+      "name": "security-best-practices",
+      "source": "vendor",
+      "vendor": "openai-skills"
+    },
+    {
+      "name": "security-threat-model",
+      "source": "vendor",
+      "vendor": "openai-skills"
+    },
+    {
+      "name": "gh-fix-ci",
+      "source": "vendor",
+      "vendor": "openai-skills",
+      "notes": "Runs the gh CLI with your GitHub credentials (read PR checks/logs). Confirm the repo/PR before letting it act."
+    },
+    {
+      "name": "gh-address-comments",
+      "source": "vendor",
+      "vendor": "openai-skills",
+      "notes": "Runs the gh CLI with your GitHub credentials to fetch PR comments. Confirm the repo/PR first."
+    },
+    {
+      "name": "mcp-builder",
+      "source": "vendor",
+      "vendor": "anthropics-skills",
+      "notes": "Evaluation scripts connect to the MCP server URL you give them; never pass production credentials in headers."
+    },
+    {
+      "name": "pdf",
+      "source": "vendor",
+      "vendor": "anthropics-skills",
+      "agents": [
+        "codex"
+      ]
+    },
+    {
+      "name": "docx",
+      "source": "vendor",
+      "vendor": "anthropics-skills",
+      "agents": [
+        "codex"
+      ],
+      "notes": "Bundled scripts/office/soffice.py may compile a C shim with gcc into the shared temp dir and LD_PRELOAD it into LibreOffice (sandbox workaround). On shared/company machines prefer a private TMPDIR and review before running."
+    },
+    {
+      "name": "xlsx",
+      "source": "vendor",
+      "vendor": "anthropics-skills",
+      "agents": [
+        "codex"
+      ],
+      "notes": "Bundled scripts/office/soffice.py may compile a C shim with gcc into the shared temp dir and LD_PRELOAD it into LibreOffice (sandbox workaround). On shared/company machines prefer a private TMPDIR and review before running."
+    },
+    {
+      "name": "pptx",
+      "source": "vendor",
+      "vendor": "anthropics-skills",
+      "agents": [
+        "codex"
+      ],
+      "notes": "Bundled scripts/office/soffice.py may compile a C shim with gcc into the shared temp dir and LD_PRELOAD it into LibreOffice (sandbox workaround). On shared/company machines prefer a private TMPDIR and review before running."
     }
   ]
 }

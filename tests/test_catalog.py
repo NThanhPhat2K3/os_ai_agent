@@ -96,3 +96,20 @@ class SafePathTest(unittest.TestCase):
                 {'name': 'c', 'source': 'vendor', 'vendor': 'v', 'skills_dir': '../../etc'}]}))
             with self.assertRaises(ValueError):
                 load(tmp)
+
+
+class AgentsTest(unittest.TestCase):
+    def test_agents_default_both_and_validation(self):
+        from tools.skill_hub.catalog import agents_of, load
+        with tempfile.TemporaryDirectory() as tmp:
+            def write(agents):
+                s = {'name': 'a', 'source': 'local'}
+                if agents is not None:
+                    s['agents'] = agents
+                Path(tmp, 'skills.json').write_text(json.dumps({'vendors': {}, 'skills': [s]}))
+            write(None); self.assertEqual(agents_of(load(tmp)['skills'][0]), ['claude', 'codex'])
+            write(['codex']); self.assertEqual(agents_of(load(tmp)['skills'][0]), ['codex'])
+            for bad in ([], ['gemini'], ['codex', 'x']):
+                write(bad)
+                with self.assertRaises(ValueError):
+                    load(tmp)

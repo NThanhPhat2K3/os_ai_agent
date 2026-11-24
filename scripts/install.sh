@@ -58,15 +58,19 @@ link "$HUB/global/AGENTS.md" "$HOME/.claude/CLAUDE.md"
 say "-- 2. Skills (whole directories; Claude: ~/.claude/skills, Codex: ~/.agents/skills)"
 # The skill list comes from skills.json (single catalog; edit it with scripts/add-skill).
 catalog="$(python3 "$HUB/tools/skill_hub/catalog.py" "$HUB")" || { say "  ! skills.json is invalid"; exit 1; }
-while IFS=$'\t' read -r name src; do
+while IFS=$'\t' read -r name src agents; do
   if [[ ! -f "$src/SKILL.md" ]]; then
     say "  ! $name: $src/SKILL.md missing (run 'git submodule update --init'?) — skipped"; continue
   fi
-  link "$src" "$HOME/.claude/skills/$name"
-  link "$src" "$HOME/.agents/skills/$name"
-  # Avoid duplicate names in Codex's legacy skills root.
-  legacy="$HOME/.codex/skills/$name"
-  if [[ -e "$legacy" && ! -L "$legacy" ]]; then backup "$legacy"; fi
+  # "agents" (from skills.json) limits a skill to one side, e.g. Anthropic's document
+  # skills only for Codex because Claude already has them built in.
+  [[ ",$agents," == *",claude,"* ]] && link "$src" "$HOME/.claude/skills/$name"
+  if [[ ",$agents," == *",codex,"* ]]; then
+    link "$src" "$HOME/.agents/skills/$name"
+    # Avoid duplicate names in Codex's legacy skills root.
+    legacy="$HOME/.codex/skills/$name"
+    if [[ -e "$legacy" && ! -L "$legacy" ]]; then backup "$legacy"; fi
+  fi
 done <<< "$catalog"
 
 say "-- 3. Safety rules"

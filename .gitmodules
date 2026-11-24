@@ -10,3 +10,9 @@
 [submodule "vendor/jeffallan-claude-skills"]
 	path = vendor/jeffallan-claude-skills
 	url = https://github.com/Jeffallan/claude-skills
+[submodule "vendor/openai-skills"]
+	path = vendor/openai-skills
+	url = https://github.com/openai/skills
+[submodule "vendor/anthropics-skills"]
+	path = vendor/anthropics-skills
+	url = https://github.com/anthropics/skills

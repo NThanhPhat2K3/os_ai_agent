@@ -23,17 +23,22 @@ chk_link "$HUB/global/AGENTS.md" "$HOME/.claude/CLAUDE.md"
 
 echo "== Skills"
 if catalog="$(python3 "$HUB/tools/skill_hub/catalog.py" "$HUB")"; then pass "skills.json valid"; else fail "skills.json invalid"; catalog=""; fi
-while IFS=$'\t' read -r n d; do
+while IFS=$'\t' read -r n d agents; do
   [[ -n "$n" ]] || continue
   [[ -f "$d/SKILL.md" ]] || fail "$n: SKILL.md missing at $d"
-  chk_link "$d" "$HOME/.claude/skills/$n"; chk_link "$d" "$HOME/.agents/skills/$n"
-  [[ -e "$HOME/.codex/skills/$n" && ! -L "$HOME/.codex/skills/$n" ]] && fail "duplicate skill in ~/.codex/skills/$n"
+  [[ ",$agents," == *",claude,"* ]] && chk_link "$d" "$HOME/.claude/skills/$n"
+  if [[ ",$agents," == *",codex,"* ]]; then
+    chk_link "$d" "$HOME/.agents/skills/$n"
+    [[ -e "$HOME/.codex/skills/$n" && ! -L "$HOME/.codex/skills/$n" ]] && fail "duplicate skill in ~/.codex/skills/$n"
+  fi
 done <<< "$catalog"
-# Stale links: point into this hub but the skill is no longer in skills.json.
-for root in "$HOME/.claude/skills" "$HOME/.agents/skills"; do
+# Stale links: point into this hub but the skill is not (or no longer) meant for that agent.
+for pair in "claude:$HOME/.claude/skills" "codex:$HOME/.agents/skills"; do
+  agent="${pair%%:*}"; root="${pair#*:}"
   for l in "$root"/*; do
     [[ -L "$l" && "$(readlink "$l")" == "$HUB/"* ]] || continue
-    grep -q "^$(basename "$l")	" <<< "$catalog" || fail "stale link $l (not in skills.json; run uninstall/install)"
+    awk -F'\t' -v n="$(basename "$l")" -v a="$agent" '$1==n && (","$3",") ~ (","a",") {f=1} END{exit !f}' <<< "$catalog" \
+      || fail "stale link $l (not in skills.json for $agent; remove the symlink)"
   done
 done
 while read -r st sha path rest; do

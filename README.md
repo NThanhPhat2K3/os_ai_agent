@@ -91,14 +91,14 @@ Tùy chọn: `--with-token-tools` (ccusage + tokscale), `--with-serena`, `--with
    /plugin install codex@openai-codex
    /codex:setup
    ```
-3. Kiểm tra: hỏi Codex *"bạn có những skill nào?"*. Phải thấy đủ 8 skill trong `skills.json`.
+3. Kiểm tra: hỏi Codex *"bạn có những skill nào?"*. Phải thấy các skill có `codex` trong `skills.json` (hiện 15).
 
 ### 7. Checklist: thế nào là xong ✅
 
 - [ ] `scripts/doctor.sh` kết thúc bằng `0 problem(s)`.
 - [ ] `python3 -m unittest` báo `OK`.
-- [ ] Mở Claude Code: gõ `/skills` (hoặc hỏi *"bạn có những skill nào?"*) thấy 8 skill chung.
-- [ ] Mở **session Codex mới**: hỏi *"bạn có những skill nào?"* thấy 8 skill chung.
+- [ ] Mở Claude Code: gõ `/skills` (hoặc hỏi *"bạn có những skill nào?"*) thấy các skill dành cho Claude (hiện 12).
+- [ ] Mở **session Codex mới**: hỏi *"bạn có những skill nào?"* thấy các skill dành cho Codex (hiện 15).
 - [ ] Thử chặn an toàn: nhờ Claude chạy `espefuse.py --version`, phải bị **từ chối**.
 - [ ] Claude gọi được Codex: gõ `/codex:review` trong một repo bất kỳ.
 - [ ] Codex gọi được Claude: trong Codex nói *"dùng skill ask-claude hỏi Claude 1+1 bằng mấy"*.
@@ -152,6 +152,13 @@ Ledger và backup nằm ở `~/.local/state/os_ai_agent/`. Mục nào bạn đã
 | `embedded-systems` (Jeffallan/claude-skills, MIT, 12.5k★) | Bật | Firmware MCU, RTOS, ngắt, DMA, tiết kiệm năng lượng (STM32, ESP32, FreeRTOS) |
 | `modern-cpp` (trailofbits/skills, CC-BY-SA-4.0, 8.4k★) | Bật | C++ hiện đại hướng an toàn. Luôn theo chuẩn C++ của dự án (embedded thường C++11/14/17) |
 | `karpathy-guidelines` (multica-ai/andrej-karpathy-skills, MIT, 235k★) | Bật | Chống lỗi hay gặp của AI: làm quá tay, sửa lan man, giả định ngầm |
+| **OpenAI** `security-best-practices`, `security-threat-model` (openai/skills, Apache-2.0) | Bật | Rà soát bảo mật theo ngôn ngữ/framework, lập threat model |
+| **OpenAI** `gh-fix-ci`, `gh-address-comments` | Bật | Sửa CI GitHub Actions bị lỗi, xử lý comment review trên PR (dùng `gh` với tài khoản của bạn) |
+| **Anthropic** `mcp-builder` (anthropics/skills, Apache-2.0) | Bật | Viết MCP server chất lượng (Python/TypeScript) |
+| **Anthropic** `pdf`, `docx`, `xlsx`, `pptx` | **Chỉ Codex** | Đọc/tạo PDF (datasheet!), Word, Excel, PowerPoint. Claude đã có sẵn bản đồng bộ từ claude.ai nên không link cho Claude |
+
+Trường `agents` trong `skills.json` chọn skill dành cho agent nào: `ask-claude` chỉ cho Codex, `ask-codex-live` chỉ cho
+Claude. Skill có `notes` (cảnh báo đã biết) được hiển thị màu cam trong Agent Hub.
 | Context7 (`upstash/context7`) | Bật (tắt bằng `--no-context7`) | Tài liệu thư viện đúng phiên bản. Vẫn phải đối chiếu header/SDK thật |
 | ccusage, tokscale | Tùy chọn `--with-token-tools` | Báo cáo / dashboard token, offline, tắt telemetry, ẩn cột tiền |
 | Serena, basic-memory | Tùy chọn | Điều hướng code qua clangd; trí nhớ chung ở `~/agent-memory` (ngoài git) |
@@ -163,6 +170,7 @@ Ledger và backup nằm ở `~/.local/state/os_ai_agent/`. Mục nào bạn đã
 scripts/add-skill owner/repo ten-skill --dry-run   # kiểm tra SKILL.md, trùng tên, phụ thuộc, code đi kèm
 scripts/add-skill owner/repo ten-skill             # submodule pin commit ≥14 ngày + ghi skills.json
 scripts/add-skill --remove ten-skill
+scripts/add-skill owner/repo ten-skill --agents codex   # chỉ cài cho một agent
 ```
 Quy trình: đọc SKILL.md → `scripts/doctor.sh` → nhờ agent còn lại review → `scripts/install.sh` → **commit và push ngay**:
 ```bash
@@ -170,7 +178,7 @@ git add -A && git commit -m "Add skill ten-skill" && git push
 ```
 > 📌 **Luôn commit + push sau khi thêm, gỡ hay cập nhật skill**, để máy khác chỉ cần `git pull`.
 > Repo đang **public**: trước khi push, xem lại `git diff --cached` và đảm bảo không có bí mật, API key hay code công ty.
-Nguồn uy tín: `anthropics/skills`, `obra/superpowers`, `trailofbits/skills`, `Jeffallan/claude-skills`,
+Nguồn uy tín: `anthropics/skills`, `openai/skills` (skill nằm ở `skills/.curated`), `obra/superpowers`, `trailofbits/skills`, `Jeffallan/claude-skills`,
 `addyosmani/agent-skills`, `hesreallyhim/awesome-claude-code`, skills.sh.
 Repo để mỗi skill trong một thư mục plugin riêng (như Trail of Bits) thì dùng `--skills-dir plugins/<tên>/skills`.
 Nếu bị báo *no SKILL.md at the pinned commit*: cấu trúc repo 14 ngày trước khác bây giờ, xem bằng
