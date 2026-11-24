@@ -2,6 +2,7 @@
 # Health check for the shared agent standard. Read-only.
 set -uo pipefail
 HUB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LEDGER="${XDG_STATE_HOME:-$HOME/.local/state}/os_ai_agent/ledger.txt"
 ok=0; bad=0
 pass() { printf '  \e[32m✔\e[0m %s\n' "$*"; ok=$((ok+1)); }
 fail() { printf '  \e[31m✘\e[0m %s\n' "$*"; bad=$((bad+1)); }
@@ -37,8 +38,12 @@ for pair in "claude:$HOME/.claude/skills" "codex:$HOME/.agents/skills"; do
   agent="${pair%%:*}"; root="${pair#*:}"
   for l in "$root"/*; do
     [[ -L "$l" && "$(readlink "$l")" == "$HUB/"* ]] || continue
-    awk -F'\t' -v n="$(basename "$l")" -v a="$agent" '$1==n && (","$3",") ~ (","a",") {f=1} END{exit !f}' <<< "$catalog" \
-      || fail "stale link $l (not in skills.json for $agent; remove the symlink)"
+    awk -F'\t' -v n="$(basename "$l")" -v a="$agent" '$1==n && (","$3",") ~ (","a",") {f=1} END{exit !f}' <<< "$catalog" && continue
+    if [[ -f "$LEDGER" ]] && grep -qxF "LINK	$l	$(readlink "$l")" "$LEDGER"; then
+      fail "stale link $l (not in skills.json for $agent; run scripts/install.sh to prune)"
+    else
+      echo "  · $l: your own link into the hub (not managed, left alone)"
+    fi
   done
 done
 while read -r st sha path rest; do
