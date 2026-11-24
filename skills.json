@@ -1,5 +1,5 @@
 {
-  "_doc": "Single catalog of skills this standard installs for BOTH Claude Code and Codex. Edit with scripts/add-skill, not by hand. 'local' = skills/<name>; 'vendor' = git submodule pinned by commit. Optional per-skill 'notes' record known issues; they are shown in Agent Hub and referenced by global/AGENTS.md.",
+  "_doc": "Single catalog of skills this standard installs for BOTH Claude Code and Codex. Edit with scripts/add-skill, not by hand. 'local' = skills/<name>; 'vendor' = git submodule pinned by commit. Optional per-skill 'notes' record known issues; they are shown in Agent Hub and referenced by global/AGENTS.md. A local wrapper skill may declare 'upstream' {vendor, file}: its upstream.md symlink points at that pinned file and check-updates tracks it.",
   "vendors": {
     "superpowers": {
       "repo": "obra/superpowers",
@@ -36,6 +36,24 @@
       "path": "vendor/anthropics-skills",
       "skills_dir": "skills",
       "ref_prefix": "skills:"
+    },
+    "google-labs-code-stitch-skills": {
+      "repo": "google-labs-code/stitch-skills",
+      "path": "vendor/google-labs-code-stitch-skills",
+      "skills_dir": "plugins/stitch-utilities/skills",
+      "ref_prefix": "stitch-skills:"
+    },
+    "nextlevelbuilder-ui-ux-pro-max-skill": {
+      "repo": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "path": "vendor/nextlevelbuilder-ui-ux-pro-max-skill",
+      "skills_dir": ".claude/skills",
+      "ref_prefix": "ui-ux-pro-max-skill:"
+    },
+    "wshobson-agents": {
+      "repo": "wshobson/agents",
+      "path": "vendor/wshobson-agents",
+      "skills_dir": "plugins",
+      "ref_prefix": "wshobson:"
     }
   },
   "skills": [
@@ -114,12 +132,43 @@
       "notes": "Evaluation scripts connect to the MCP server URL you give them; never pass production credentials in headers."
     },
     {
-      "name": "pdf",
+      "name": "enhance-prompt",
       "source": "vendor",
-      "vendor": "anthropics-skills",
+      "vendor": "google-labs-code-stitch-skills",
       "agents": [
-        "codex"
+        "claude"
       ]
+    },
+    {
+      "name": "ui-ux-pro-max",
+      "source": "vendor",
+      "vendor": "nextlevelbuilder-ui-ux-pro-max-skill"
+    },
+    {
+      "name": "frontend-design",
+      "source": "vendor",
+      "vendor": "anthropics-skills"
+    },
+    {
+      "name": "lvgl-hmi-production",
+      "source": "local",
+      "notes": "Phát's own skill (moved here from 02.skill/lgvl_skills, which is now superseded by this copy)."
+    },
+    {
+      "name": "arm-cortex-expert",
+      "source": "local",
+      "upstream": {
+        "vendor": "wshobson-agents",
+        "file": "plugins/arm-cortex-microcontrollers/agents/arm-cortex-expert.md"
+      }
+    },
+    {
+      "name": "c-pro",
+      "source": "local",
+      "upstream": {
+        "vendor": "wshobson-agents",
+        "file": "plugins/systems-programming/agents/c-pro.md"
+      }
     }
   ]
 }

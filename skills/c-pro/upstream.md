@@ -1,0 +1,1 @@
+../../vendor/wshobson-agents/plugins/systems-programming/agents/c-pro.md

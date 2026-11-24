@@ -27,6 +27,7 @@ if catalog="$(python3 "$HUB/tools/skill_hub/catalog.py" "$HUB")"; then pass "ski
 while IFS=$'\t' read -r n d agents; do
   [[ -n "$n" ]] || continue
   [[ -f "$d/SKILL.md" ]] || fail "$n: SKILL.md missing at $d"
+  [[ -L "$d/upstream.md" && ! -e "$d/upstream.md" ]] && fail "$n: upstream.md is a broken link (git submodule update --init?)"
   [[ ",$agents," == *",claude,"* ]] && chk_link "$d" "$HOME/.claude/skills/$n"
   if [[ ",$agents," == *",codex,"* ]]; then
     chk_link "$d" "$HOME/.agents/skills/$n"

@@ -16,3 +16,12 @@
 [submodule "vendor/anthropics-skills"]
 	path = vendor/anthropics-skills
 	url = https://github.com/anthropics/skills
+[submodule "vendor/google-labs-code-stitch-skills"]
+	path = vendor/google-labs-code-stitch-skills
+	url = https://github.com/google-labs-code/stitch-skills
+[submodule "vendor/nextlevelbuilder-ui-ux-pro-max-skill"]
+	path = vendor/nextlevelbuilder-ui-ux-pro-max-skill
+	url = https://github.com/nextlevelbuilder/ui-ux-pro-max-skill
+[submodule "vendor/wshobson-agents"]
+	path = vendor/wshobson-agents
+	url = https://github.com/wshobson/agents

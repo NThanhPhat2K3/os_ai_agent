@@ -142,7 +142,8 @@ def check_vendor(name, vendor, skills, cooldown, now):
 
 
 def skill_text(repo, ref, rel_dir):
-    url = f'https://raw.githubusercontent.com/{repo}/{ref}/{rel_dir}/SKILL.md'
+    target = rel_dir if rel_dir.endswith('.md') else f'{rel_dir}/SKILL.md'   # wrapper upstream file or skill dir
+    url = f'https://raw.githubusercontent.com/{repo}/{ref}/{target}'
     request = urllib.request.Request(url, headers={'User-Agent': 'os-ai-agent-skill-hub'})
     try:
         with urllib.request.urlopen(request, timeout=10) as response:
@@ -161,6 +162,9 @@ def checks(cooldown=14):
     catalog = _load_catalog(ROOT)
     for vname, vendor in catalog['vendors'].items():
         skills = [(s['name'], _skill_rel_dir(catalog, s)) for s in catalog['skills'] if s.get('vendor') == vname]
+        # local wrapper skills that track a single upstream file in this vendor
+        skills += [(s['name'], s['upstream']['file']) for s in catalog['skills']
+                   if s.get('upstream', {}).get('vendor') == vname]
         if skills:
             jobs.append((vname, lambda vname=vname, vendor=vendor, skills=skills: check_vendor(vname, vendor, skills, cooldown, now)))
     results = []

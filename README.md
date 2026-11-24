@@ -91,14 +91,14 @@ Tùy chọn: `--with-token-tools` (ccusage + tokscale), `--with-serena`, `--with
    /plugin install codex@openai-codex
    /codex:setup
    ```
-3. Kiểm tra: hỏi Codex *"bạn có những skill nào?"*. Phải thấy các skill có `codex` trong `skills.json` (hiện 13).
+3. Kiểm tra: hỏi Codex *"bạn có những skill nào?"*. Phải thấy các skill có `codex` trong `skills.json` (hiện 17).
 
 ### 7. Checklist: thế nào là xong ✅
 
 - [ ] `scripts/doctor.sh` kết thúc bằng `0 problem(s)`.
 - [ ] `python3 -m unittest` báo `OK`.
-- [ ] Mở Claude Code: gõ `/skills` (hoặc hỏi *"bạn có những skill nào?"*) thấy các skill dành cho Claude (hiện 12).
-- [ ] Mở **session Codex mới**: hỏi *"bạn có những skill nào?"* thấy các skill dành cho Codex (hiện 13).
+- [ ] Mở Claude Code: gõ `/skills` (hoặc hỏi *"bạn có những skill nào?"*) thấy các skill dành cho Claude (hiện 18).
+- [ ] Mở **session Codex mới**: hỏi *"bạn có những skill nào?"* thấy các skill dành cho Codex (hiện 17).
 - [ ] Thử chặn an toàn: nhờ Claude chạy `espefuse.py --version`, phải bị **từ chối**.
 - [ ] Claude gọi được Codex: gõ `/codex:review` trong một repo bất kỳ.
 - [ ] Codex gọi được Claude: trong Codex nói *"dùng skill ask-claude hỏi Claude 1+1 bằng mấy"*.
@@ -155,10 +155,19 @@ Ledger và backup nằm ở `~/.local/state/os_ai_agent/`. Mục nào bạn đã
 | **OpenAI** `security-best-practices`, `security-threat-model` (openai/skills, Apache-2.0) | Bật | Rà soát bảo mật theo ngôn ngữ/framework, lập threat model |
 | **OpenAI** `gh-fix-ci`, `gh-address-comments` | Bật | Sửa CI GitHub Actions bị lỗi, xử lý comment review trên PR (dùng `gh` với tài khoản của bạn) |
 | **Anthropic** `mcp-builder` (anthropics/skills, Apache-2.0) | Bật | Viết MCP server chất lượng (Python/TypeScript) |
-| **Anthropic** `pdf` | **Chỉ Codex** | Đọc/tạo PDF (datasheet!). Claude đã có sẵn bản đồng bộ từ claude.ai nên không link cho Claude |
+| **Embedded** `lvgl-hmi-production` | Bật (tự viết, chuyển từ `02.skill/lgvl_skills`) | Thiết kế + triển khai giao diện LVGL cho màn hình embedded, Zephyr |
+| **Embedded** `arm-cortex-expert`, `c-pro` | Bật (lớp bọc) | Firmware Cortex-M (STM32, nRF52, SAMD); C an toàn bộ nhớ. Nội dung lấy từ subagent của `wshobson/agents` (MIT, pin), qua `upstream.md` |
+| **UI/UX** `ui-ux-pro-max` (nextlevelbuilder, MIT, 154k★) | Bật | Kho phong cách, bảng màu, font, hướng dẫn UX, tìm kiếm cục bộ |
+| **UI/UX** `frontend-design` (Anthropic) | Bật | Định hướng thẩm mỹ cho UI web, tránh giao diện "mặc định" |
+| **UI/UX** `enhance-prompt` (Google Stitch, Apache-2.0) | **Chỉ Claude** | Biến ý tưởng UI mơ hồ thành prompt tốt cho Stitch. Codex đã có bộ Stitch qua plugin |
 
-Không dùng `docx`/`xlsx`/`pptx` của Anthropic: script đi kèm có thể biên dịch và `LD_PRELOAD` một thư viện ở đường dẫn cố
-định trong `/tmp` (rủi ro trên máy dùng chung, Codex review 24/11/2026), và Codex đã có plugin tài liệu riêng.
+Không dùng (Codex review / trùng): `docx`/`xlsx`/`pptx` của Anthropic (script có thể `LD_PRELOAD` thư viện từ `/tmp`),
+`pdf` (Codex có plugin `pdf` chính hãng), bộ `sickn33/agentic-awesome-skills` (495 MB, gom lại, nhiều skill trùng/không rõ nguồn).
+Chờ đủ 14 ngày: `embedded-gui-production` của Stitch (Claude). `generate-design` của Stitch bị từ chối vì tên trong file
+(`stitch::generate-design`) không khớp thư mục.
+
+**Lớp bọc (wrapper):** skill cục bộ trong `skills/<tên>/` có `SKILL.md` ngắn và `upstream.md` là symlink tới file đã pin trong
+`vendor/`; khai báo `upstream` trong `skills.json` để `check-updates` theo dõi bản mới.
 
 Trường `agents` trong `skills.json` chọn skill dành cho agent nào: `ask-claude` chỉ cho Codex, `ask-codex-live` chỉ cho
 Claude. Skill có `notes` (cảnh báo đã biết) được hiển thị màu cam trong Agent Hub.

@@ -24,6 +24,9 @@ def load(root=ROOT):
         agents = skill.get('agents', list(AGENTS))
         if not agents or any(a not in AGENTS for a in agents):
             raise ValueError(f"bad agents for {skill['name']}: {agents!r}")
+        up = skill.get('upstream')
+        if up is not None and (up.get('vendor') not in data['vendors'] or not SAFE_DIR.fullmatch(up.get('file', ''))):
+            raise ValueError(f"bad upstream for {skill['name']}")
         for key in ('skills_dir',):
             if key in skill and not SAFE_DIR.fullmatch(skill[key]):
                 raise ValueError(f"unsafe {key} for {skill['name']}: {skill[key]!r}")

@@ -113,3 +113,25 @@ class AgentsTest(unittest.TestCase):
                 write(bad)
                 with self.assertRaises(ValueError):
                     load(tmp)
+
+
+class UpstreamTest(unittest.TestCase):
+    def test_wrapper_upstream_symlinks_resolve(self):
+        from tools.skill_hub.catalog import load
+        data = load()
+        for s in data['skills']:
+            if 'upstream' in s:
+                link = ROOT / 'skills' / s['name'] / 'upstream.md'
+                vendor = data['vendors'][s['upstream']['vendor']]
+                self.assertTrue(link.is_symlink(), s['name'])
+                self.assertEqual(link.resolve(), (ROOT / vendor['path'] / s['upstream']['file']).resolve())
+
+    def test_bad_upstream_rejected(self):
+        from tools.skill_hub.catalog import load
+        with tempfile.TemporaryDirectory() as tmp:
+            for up in ({'vendor': 'nope', 'file': 'a.md'}, {'vendor': 'v', 'file': '../x.md'}):
+                Path(tmp, 'skills.json').write_text(json.dumps({
+                    'vendors': {'v': {'repo': 'o/r', 'path': 'vendor/v', 'skills_dir': 'skills'}},
+                    'skills': [{'name': 'w', 'source': 'local', 'upstream': up}]}))
+                with self.assertRaises(ValueError):
+                    load(tmp)
