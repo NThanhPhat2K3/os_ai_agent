@@ -16,7 +16,7 @@ installer có dry-run/backup/rollback, memory nằm ngoài git.
 | `global/AGENTS.md` | Luật chung cấp người dùng | `~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md` |
 | `skills/ask-claude/` | Codex → Claude (`claude -p`, chỉ đọc) | `~/.claude/skills/`, `~/.agents/skills/` |
 | `skills/ask-codex-live/` | Claude → session Codex đang mở (`codex queue`), em xem realtime | như trên |
-| `vendor/superpowers/` | `obra/superpowers` (MIT), submodule **pin commit 22f0b46** | 3 skill được chọn, như trên |
+| `vendor/superpowers/` | `obra/superpowers` (MIT), submodule **pin theo submodule** | 3 skill được chọn, như trên |
 | `safety/codex/embedded-safety.rules` | Codex: cấm eFuse, hỏi trước khi flash | `~/.codex/rules/` |
 | `safety/claude/permissions.json` | Claude: luật tương đương | merge vào `~/.claude/settings.json` |
 | `mcp/servers.toml` | Danh mục MCP + phiên bản pin (tài liệu, client không đọc file này) | được `install.sh` dùng |
@@ -29,8 +29,8 @@ installer có dry-run/backup/rollback, memory nằm ngoài git.
 |---|---|---|
 | Context7 (`upstash/context7`) | **Bật** cho cả hai | Tài liệu thư viện đúng phiên bản. Vẫn phải đối chiếu header/SDK thật |
 | superpowers: `systematic-debugging`, `test-driven-development`, `verification-before-completion` | **Bật chọn lọc** | Bộ ba khép kín. `writing-plans` kéo theo 3 skill khác nên chưa bật |
-| Serena (`serena-agent==2.1.0`) | Tùy chọn: `--with-serena` | Điều hướng code qua clangd. Cần `compile_commands.json` |
-| basic-memory (`basic-memory==1.0.0`) | Tùy chọn: `--with-basic-memory` | Trí nhớ chung. Dữ liệu ở `~/agent-memory` (ngoài git, quyền 700) |
+| Serena (`serena-agent`) | Tùy chọn: `--with-serena` | Điều hướng code qua clangd. Cần `compile_commands.json` |
+| basic-memory (`basic-memory`) | Tùy chọn: `--with-basic-memory` | Trí nhớ chung. Dữ liệu ở `~/agent-memory` (ngoài git, quyền 700) |
 
 ## Cài đặt
 

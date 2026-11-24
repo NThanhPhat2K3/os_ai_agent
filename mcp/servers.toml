@@ -5,19 +5,19 @@
 status = "enabled"
 purpose = "Version-correct library docs (reduce invented APIs). Still confirm against project headers/SDK."
 claude = "claude mcp add --scope user --transport http context7 https://mcp.context7.com/mcp"
-codex  = "codex mcp add context7 -- npx -y @upstash/context7-mcp@4.6.0"
+codex  = "codex mcp add context7 -- npx -y @upstash/context7-mcp@<context7-pin>"
 
 [serena]
 status = "optional"   # enable with: scripts/install.sh --with-serena
 purpose = "Semantic code navigation/editing via LSP (clangd for C/C++). Needs compile_commands.json."
-package = "serena-agent==2.1.0"   # via: uv tool install
+package = "serena-agent==<serena-pin>"   # via: uv tool install
 claude = "claude mcp add --scope user serena -- serena start-mcp-server --context claude-code --project-from-cwd"
 codex  = "codex mcp add serena -- serena start-mcp-server --project-from-cwd --context=codex"
 
 [basic-memory]
 status = "optional"   # enable with: scripts/install.sh --with-basic-memory
 purpose = "Shared long-term notes across Claude and Codex (Markdown). Data lives OUTSIDE this repo."
-package = "basic-memory==1.0.0"   # via: uv tool install
+package = "basic-memory==<basic-memory-pin>"   # via: uv tool install
 data_dir = "~/agent-memory"       # not in git; may contain sensitive notes
 claude = "claude mcp add --scope user basic-memory -- basic-memory mcp"
 codex  = "codex mcp add basic-memory -- basic-memory mcp"

@@ -111,6 +111,10 @@ print(f"  permissions: {len(added)} rule(s) added, others already present")
 PY
 fi
 
+pin() { python3 "$HUB/tools/skill_hub/pins.py" "$HUB/pins.json" "$1"; }
+CONTEXT7_VERSION="$(pin context7)"
+SERENA_VERSION="$(pin serena)"
+BASIC_MEMORY_VERSION="$(pin basic-memory)"
 say "-- 4. MCP servers"
 # Fingerprint of a server's full config (`mcp get` minus the volatile Status line).
 # uninstall removes a server only if its fingerprint is unchanged.
@@ -125,7 +129,7 @@ mcp_add() { # mcp_add <client> <name> <command...>
   say "  + $client: $name"
 }
 mcp_add claude context7 claude mcp add --scope user --transport http context7 https://mcp.context7.com/mcp
-mcp_add codex  context7 codex mcp add context7 -- npx -y @upstash/context7-mcp@4.6.0
+mcp_add codex  context7 codex mcp add context7 -- npx -y @upstash/context7-mcp@${CONTEXT7_VERSION}
 
 need_uv() {
   command -v uv >/dev/null || { say "  ! 'uv' not found. Install it first: https://docs.astral.sh/uv/getting-started/installation/"; return 1; }
@@ -137,12 +141,12 @@ uv_install() { # only record tools this script actually installed
   note "UVTOOL	$pkg"
 }
 if ((WITH_SERENA)) && need_uv; then
-  uv_install serena-agent "serena-agent==2.1.0"
+  uv_install serena-agent "serena-agent==${SERENA_VERSION}"
   mcp_add claude serena claude mcp add --scope user serena -- serena start-mcp-server --context claude-code --project-from-cwd
   mcp_add codex  serena codex mcp add serena -- serena start-mcp-server --project-from-cwd --context=codex
 fi
 if ((WITH_BM)) && need_uv; then
-  uv_install basic-memory "basic-memory==1.0.0"
+  uv_install basic-memory "basic-memory==${BASIC_MEMORY_VERSION}"
   run mkdir -p "$HOME/agent-memory"; run chmod 700 "$HOME/agent-memory"
   mcp_add claude basic-memory claude mcp add --scope user basic-memory -e BASIC_MEMORY_HOME="$HOME/agent-memory" -- basic-memory mcp
   mcp_add codex  basic-memory codex mcp add basic-memory --env BASIC_MEMORY_HOME="$HOME/agent-memory" -- basic-memory mcp
