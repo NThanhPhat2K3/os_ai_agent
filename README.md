@@ -31,6 +31,9 @@ installer có dry-run/backup/rollback, memory nằm ngoài git.
 | superpowers: `systematic-debugging`, `test-driven-development`, `verification-before-completion` | **Bật chọn lọc** | Bộ ba khép kín. `writing-plans` kéo theo 3 skill khác nên chưa bật |
 | Serena (`serena-agent`) | Tùy chọn: `--with-serena` | Điều hướng code qua clangd. Cần `compile_commands.json` |
 | basic-memory (`basic-memory`) | Tùy chọn: `--with-basic-memory` | Trí nhớ chung. Dữ liệu ở `~/agent-memory` (ngoài git, quyền 700) |
+| ccusage (`ccusage/ccusage`, 19.6k★) | Dùng qua `scripts/tokens` | Báo cáo token Claude + Codex từ log trên máy |
+| tokscale (`junhoyeo/tokscale`, 5.9k★) | Dùng qua `scripts/tokens tui` | Dashboard token tương tác trong terminal |
+| skills CLI (`vercel-labs/skills`, 40.7k★) | Theo dõi, **chưa dùng để cài** | Bản ≥14 ngày (1.7.6) chưa pin được commit; xem lại khi lockfile v2 đủ tuổi |
 
 ## Cài đặt
 
@@ -47,6 +50,26 @@ Sau khi cài, **khởi động lại Claude Code và Codex**.
 
 Gỡ: `scripts/uninstall.sh [--dry-run]`. Script chỉ hoàn tác những gì `install.sh` đã ghi trong ledger
 (`~/.local/state/os_ai_agent/ledger.txt`) và khôi phục bản backup.
+
+## Cập nhật và theo dõi token
+
+Phiên bản nằm duy nhất ở `pins.json` (và commit của submodule `vendor/superpowers`).
+
+```bash
+scripts/check-updates           # bảng trạng thái: mới nhất / có bản mới / quá mới / CẢNH BÁO / lỗi
+scripts/check-updates --json    # cho script; exit 10 nếu có bản nên cập nhật
+scripts/tokens                  # token theo ngày (ccusage), Claude + Codex
+scripts/tokens weekly           # theo tuần; mọi tham số khác chuyển cho ccusage
+scripts/tokens tui              # dashboard màu (tokscale)
+```
+
+- Bản phát hành **dưới 14 ngày** không bao giờ được đề xuất.
+- Với superpowers, tool báo skill nào trong bộ ba đã thay đổi, và **cảnh báo** nếu bản mới bắt
+  đầu phụ thuộc vào skill chưa bật.
+- Không có gì tự động cập nhật. Quy trình: sửa `pins.json` (hoặc `git -C vendor/superpowers checkout <sha>`)
+  → `scripts/doctor.sh` → nhờ agent còn lại review → commit → `scripts/install.sh`.
+- Token chỉ đọc log trên máy, chạy `--offline`, tắt telemetry. Số tiền ccusage hiển thị là **ước tính
+  theo giá API**, không phải hóa đơn thật của gói đăng ký.
 
 ## Dùng cho một dự án mới
 

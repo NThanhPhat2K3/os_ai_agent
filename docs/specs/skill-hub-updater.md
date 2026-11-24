@@ -1,7 +1,8 @@
 # Spec: Skill Hub (update checker + dashboard)
 
 Author: Claude (requirements) · Builder: Codex · Reviewer: Claude · Owner: Phát
-Status: ready to build · Date: 2026-11-24
+Status: **superseded** (2026-11-24). Dashboard dropped in favour of existing tools:
+ccusage/tokscale for tokens, `scripts/check-updates` (engine from this spec) for updates · Date: 2026-11-24
 
 ## 1. Problem
 

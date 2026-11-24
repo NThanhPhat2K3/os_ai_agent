@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""Check pinned skills/tools for upstream updates. Read-only: never changes anything.
+
+Usage: scripts/check-updates [--json] [--cooldown DAYS]
+Exit:  0 = nothing to do, 10 = update available or warning, 1 = some checks failed.
+"""
+import argparse
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tools.skill_hub.engine import checks  # noqa: E402
+
+COLORS = {'up-to-date': '32', 'update-available': '33', 'too-new': '36', 'warning': '35', 'error': '31'}
+LABELS = {'up-to-date': 'mới nhất', 'update-available': 'có bản mới', 'too-new': 'quá mới (<cooldown)',
+          'warning': 'CẢNH BÁO', 'error': 'lỗi'}
+
+
+def short(value):
+    value = value or '-'
+    return value[:7] if len(value) == 40 else value
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument('--json', action='store_true')
+    parser.add_argument('--cooldown', type=int, default=14)
+    args = parser.parse_args()
+    results = sorted(checks(args.cooldown), key=lambda r: r['id'])
+    if args.json:
+        print(json.dumps(results, indent=2, ensure_ascii=False))
+    else:
+        color = sys.stdout.isatty()
+        print(f"{'Thành phần':<14} {'Đang dùng':<10} {'Mới nhất':<10} {'Đề xuất':<10} Trạng thái")
+        print('-' * 70)
+        for r in results:
+            status = r['status']
+            label = LABELS.get(status, status)
+            if color:
+                label = f"\033[{COLORS.get(status, '0')}m{label}\033[0m"
+            print(f"{r['id']:<14} {short(r.get('current')):<10} {short(r.get('latest')):<10} "
+                  f"{short(r.get('recommended')):<10} {label}")
+            for extra in ('warning', 'error'):
+                if r.get(extra):
+                    print(f"{'':<14} ↳ {r[extra]}")
+            if r.get('changed_skills'):
+                print(f"{'':<14} ↳ skill thay đổi: {', '.join(r['changed_skills'])}")
+        print('\nCách cập nhật: sửa pins.json (hoặc checkout submodule), chạy scripts/doctor.sh, '
+              'nhờ agent còn lại review, rồi commit. Không có gì được tự động áp dụng.')
+    statuses = {r['status'] for r in results}
+    if 'error' in statuses:
+        return 1
+    return 10 if statuses & {'update-available', 'warning'} else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

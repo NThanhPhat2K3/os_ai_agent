@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Token usage for Claude Code + Codex, using pinned upstream tools. Local data only.
+#   scripts/tokens              # ccusage daily report (all detected agents)
+#   scripts/tokens tui          # tokscale interactive dashboard (colourful TUI)
+#   scripts/tokens <args...>    # any other args go to ccusage, e.g. `weekly`, `codex daily`, `blocks --live`
+set -euo pipefail
+HUB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+pin() { python3 "$HUB/tools/skill_hub/pins.py" "$HUB/pins.json" "$1"; }
+
+# Privacy: no telemetry, no social submit, offline pricing (no network needed).
+export DISABLE_TELEMETRY=1 DO_NOT_TRACK=1
+
+if [[ "${1:-}" == "tui" ]]; then
+  shift
+  exec npx -y "tokscale@$(pin tokscale)" tui --offline -c claude,codex "$@"
+fi
+[[ $# -eq 0 ]] && set -- daily
+exec npx -y "ccusage@$(pin ccusage)" "$@" --offline

@@ -2,3 +2,4 @@
 memory/
 *.log
 .state/
+__pycache__/
