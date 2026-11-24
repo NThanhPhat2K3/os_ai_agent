@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""Add (or remove) a third-party skill to the shared catalog, safely.
+
+  scripts/add-skill owner/repo skill-name [--skills-dir skills] [--ref SHA] [--dry-run]
+  scripts/add-skill --remove skill-name
+
+Adding:
+  1. vendors the repo as a git submodule under vendor/<repo-name> (reused if already there),
+  2. pins it to the newest commit that is at least 14 days old (or --ref),
+  3. validates SKILL.md (frontmatter name/description, name matches folder),
+  4. warns about name clashes, references to skills that are not enabled, and bundled scripts,
+  5. adds the skill to skills.json.
+It never commits and never installs: review, run scripts/doctor.sh, ask the other agent to
+review, commit, then run scripts/install.sh.
+"""
+import argparse
+import json
+import re
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools.skill_hub.catalog import NAME, load  # noqa: E402
+from tools.skill_hub.engine import choose_commit, github_json  # noqa: E402
+
+REPO = re.compile(r'[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+')
+SHA = re.compile(r'[0-9a-f]{40}')
+
+
+def git(*args, cwd=ROOT):
+    return subprocess.run(['git', '-C', str(cwd), *args], check=True, capture_output=True, text=True).stdout.strip()
+
+
+def frontmatter(text):
+    m = re.match(r'---\n(.*?)\n---', text, re.S)
+    if not m:
+        return {}
+    out = {}
+    for line in m.group(1).splitlines():
+        if ':' in line and not line.startswith(' '):
+            k, v = line.split(':', 1)
+            out[k.strip()] = v.strip().strip('"\'')
+    return out
+
+
+def save(data):
+    tmp = ROOT / 'skills.json.tmp'
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+    tmp.replace(ROOT / 'skills.json')
+
+
+def pick_commit(repo, cooldown):
+    commits = github_json(f'repos/{repo}/commits?per_page=100')
+    cands = [(c['sha'], datetime.fromisoformat(c['commit']['committer']['date'].replace('Z', '+00:00'))) for c in commits]
+    r = choose_commit('', cands, cooldown, datetime.now(timezone.utc))
+    if not r['recommended']:
+        sys.exit(f'No commit of {repo} is at least {cooldown} days old; pass --ref explicitly if you accept that.')
+    return r['recommended']
+
+
+def remove(name, dry):
+    data = load()
+    before = len(data['skills'])
+    data['skills'] = [s for s in data['skills'] if s['name'] != name]
+    if len(data['skills']) == before:
+        sys.exit(f'{name} is not in skills.json')
+    if not dry:
+        save(data)
+    print(f"{'[dry-run] ' if dry else ''}removed {name} from skills.json.")
+    print('Next: scripts/doctor.sh will flag the now-stale links; remove them with '
+          f'`rm ~/.claude/skills/{name} ~/.agents/skills/{name}` (they are symlinks), then commit.')
+
+
+def add(args):
+    if not REPO.fullmatch(args.repo):
+        sys.exit('repo must look like owner/name')
+    if not NAME.fullmatch(args.skill):
+        sys.exit('skill name must be lowercase letters, digits and dashes')
+    if args.ref and not SHA.fullmatch(args.ref):
+        sys.exit('--ref must be a full 40-character commit SHA')
+    data = load()
+    if any(s['name'] == args.skill for s in data['skills']):
+        sys.exit(f'{args.skill} is already in skills.json')
+
+    vendor_name = args.repo.split('/')[1].lower()
+    vendor = data['vendors'].get(vendor_name)
+    if vendor and vendor['repo'] != args.repo:
+        sys.exit(f'vendor name {vendor_name} already used by {vendor["repo"]}')
+    path = f'vendor/{vendor_name}'
+    if not vendor:
+        ref = args.ref or pick_commit(args.repo, args.cooldown)
+        print(f'+ submodule {args.repo} -> {path} @ {ref[:7]}')
+        if args.dry_run:
+            print('[dry-run] stopping before any change.')
+            return
+        git('submodule', 'add', f'https://github.com/{args.repo}', path)
+        git('checkout', '-q', ref, cwd=ROOT / path)
+        vendor = {'repo': args.repo, 'path': path, 'skills_dir': args.skills_dir, 'ref_prefix': f'{vendor_name}:'}
+        data['vendors'][vendor_name] = vendor
+    else:
+        print(f'= reusing vendor {vendor_name} at {git("rev-parse", "--short", "HEAD", cwd=ROOT / path)}')
+
+    sdir = ROOT / vendor['path'] / vendor['skills_dir'] / args.skill
+    md = sdir / 'SKILL.md'
+    if not md.is_file():
+        sys.exit(f'no SKILL.md at {md.relative_to(ROOT)} (wrong --skills-dir?). Submodule left for you to inspect.')
+    text = md.read_text(encoding='utf-8', errors='replace')
+    fm = frontmatter(text)
+    problems, warnings = [], []
+    if fm.get('name') != args.skill:
+        problems.append(f"frontmatter name is {fm.get('name')!r}, expected {args.skill!r}")
+    if not fm.get('description'):
+        problems.append('frontmatter has no description (agents could not decide when to use it)')
+    for home in (Path.home() / '.claude/skills', Path.home() / '.agents/skills', Path.home() / '.codex/skills'):
+        other = home / args.skill
+        if other.exists() and not str(other.resolve()).startswith(str(ROOT)):
+            warnings.append(f'name clash with existing {other}')
+    enabled = {s['name'] for s in data['skills']} | {args.skill}
+    refs = set(re.findall(re.escape(vendor['ref_prefix']) + r'([a-z0-9-]+)', text))
+    if missing := sorted(refs - enabled):
+        warnings.append('references skills that are not enabled: ' + ', '.join(missing))
+    scripts = [p.name for p in sdir.rglob('*') if p.is_file() and (p.suffix in {'.sh', '.py', '.js', '.ts', '.cmd'} or p.stat().st_mode & 0o111)]
+    if scripts:
+        warnings.append('bundles code the agent may run, review it: ' + ', '.join(sorted(scripts)))
+    for w in warnings:
+        print('  ! ' + w)
+    if problems:
+        for p in problems:
+            print('  ✘ ' + p)
+        sys.exit('not added.')
+    if args.dry_run:
+        print(f'[dry-run] would add {args.skill} to skills.json')
+        return
+    data['skills'].append({'name': args.skill, 'source': 'vendor', 'vendor': vendor_name})
+    save(data)
+    print(f'+ {args.skill} added to skills.json ({len(text.splitlines())} lines in SKILL.md)')
+    print('Next: read the SKILL.md, scripts/doctor.sh, ask the other agent to review, commit, scripts/install.sh')
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('repo', nargs='?')
+    ap.add_argument('skill', nargs='?')
+    ap.add_argument('--skills-dir', default='skills')
+    ap.add_argument('--ref')
+    ap.add_argument('--cooldown', type=int, default=14)
+    ap.add_argument('--remove', metavar='SKILL')
+    ap.add_argument('--dry-run', action='store_true')
+    args = ap.parse_args()
+    if args.remove:
+        return remove(args.remove, args.dry_run)
+    if not (args.repo and args.skill):
+        ap.error('need owner/repo and skill-name (or --remove NAME)')
+    add(args)
+
+
+if __name__ == '__main__':
+    main()

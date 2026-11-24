@@ -22,12 +22,26 @@ chk_link "$HUB/global/AGENTS.md" "$HOME/.codex/AGENTS.md"
 chk_link "$HUB/global/AGENTS.md" "$HOME/.claude/CLAUDE.md"
 
 echo "== Skills"
-for d in "$HUB"/skills/*/ "$HUB"/vendor/superpowers/skills/{systematic-debugging,test-driven-development,verification-before-completion}/; do
-  n="$(basename "$d")"; chk_link "${d%/}" "$HOME/.claude/skills/$n"; chk_link "${d%/}" "$HOME/.agents/skills/$n"
+if catalog="$(python3 "$HUB/tools/skill_hub/catalog.py" "$HUB")"; then pass "skills.json valid"; else fail "skills.json invalid"; catalog=""; fi
+while IFS=$'\t' read -r n d; do
+  [[ -n "$n" ]] || continue
+  [[ -f "$d/SKILL.md" ]] || fail "$n: SKILL.md missing at $d"
+  chk_link "$d" "$HOME/.claude/skills/$n"; chk_link "$d" "$HOME/.agents/skills/$n"
   [[ -e "$HOME/.codex/skills/$n" && ! -L "$HOME/.codex/skills/$n" ]] && fail "duplicate skill in ~/.codex/skills/$n"
+done <<< "$catalog"
+# Stale links: point into this hub but the skill is no longer in skills.json.
+for root in "$HOME/.claude/skills" "$HOME/.agents/skills"; do
+  for l in "$root"/*; do
+    [[ -L "$l" && "$(readlink "$l")" == "$HUB/"* ]] || continue
+    grep -q "^$(basename "$l")	" <<< "$catalog" || fail "stale link $l (not in skills.json; run uninstall/install)"
+  done
 done
-sub="$(git -C "$HUB" submodule status vendor/superpowers 2>/dev/null)"
-[[ "$sub" == " "* ]] && pass "superpowers pinned at ${sub:1:7}" || fail "superpowers submodule not at pinned commit: $sub"
+while read -r st sha path rest; do
+  [[ -n "$path" ]] || continue
+  [[ "$st" == "$sha" ]] && sha="$st"   # clean entries start with a space, which read swallows
+  pass "$path pinned at ${sha:0:7}"
+done < <(git -C "$HUB" submodule status 2>/dev/null | sed 's/^ /= /')
+git -C "$HUB" submodule status 2>/dev/null | grep -qE '^[-+U]' && fail "a submodule is not at its pinned commit (git submodule status)"
 
 echo "== Safety"
 chk_link "$HUB/safety/codex/embedded-safety.rules" "$HOME/.codex/rules/embedded-safety.rules"

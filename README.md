@@ -51,6 +51,28 @@ Sau khi cài, **khởi động lại Claude Code và Codex**.
 Gỡ: `scripts/uninstall.sh [--dry-run]`. Script chỉ hoàn tác những gì `install.sh` đã ghi trong ledger
 (`~/.local/state/os_ai_agent/ledger.txt`) và khôi phục bản backup.
 
+## Giao diện: Agent Hub
+
+```bash
+scripts/report               # tạo trang HTML và mở trình duyệt (~/.cache/os_ai_agent/report.html)
+scripts/report --no-network  # bỏ qua kiểm tra bản mới (nhanh, không cần mạng)
+```
+
+4 tab: **Skill** (mọi skill của Claude và Codex, tìm kiếm, bấm để đọc SKILL.md), **Cập nhật**
+(kết quả check-updates), **Token** (biểu đồ theo ngày, Claude và Codex), **Thêm skill** (hướng dẫn).
+Trang tĩnh, CSS/JS nhúng sẵn, không server, không CDN, quyền file 600.
+
+## Thêm hoặc gỡ skill
+
+Danh mục duy nhất là `skills.json`; `install.sh`, `doctor.sh` và `check-updates` đều đọc từ đây.
+
+```bash
+scripts/add-skill owner/repo ten-skill --dry-run   # thử: kiểm tra SKILL.md, trùng tên, phụ thuộc, code đi kèm
+scripts/add-skill owner/repo ten-skill             # thêm submodule (pin commit ≥14 ngày) + ghi skills.json
+scripts/add-skill --remove ten-skill               # gỡ khỏi danh mục
+```
+Sau đó: đọc SKILL.md → `scripts/doctor.sh` → nhờ agent còn lại review → commit → `scripts/install.sh`.
+
 ## Cập nhật và theo dõi token
 
 Phiên bản nằm duy nhất ở `pins.json` (và commit của submodule `vendor/superpowers`).

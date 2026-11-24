@@ -1,0 +1,13 @@
+{
+  "_doc": "Single catalog of skills this standard installs for BOTH Claude Code and Codex. Edit with scripts/add-skill, not by hand. 'local' = skills/<name>; 'vendor' = git submodule pinned by commit.",
+  "vendors": {
+    "superpowers": {"repo": "obra/superpowers", "path": "vendor/superpowers", "skills_dir": "skills", "ref_prefix": "superpowers:"}
+  },
+  "skills": [
+    {"name": "ask-claude", "source": "local"},
+    {"name": "ask-codex-live", "source": "local"},
+    {"name": "systematic-debugging", "source": "vendor", "vendor": "superpowers"},
+    {"name": "test-driven-development", "source": "vendor", "vendor": "superpowers"},
+    {"name": "verification-before-completion", "source": "vendor", "vendor": "superpowers"}
+  ]
+}

@@ -24,9 +24,6 @@ for a in "$@"; do
   esac
 done
 
-# Superpowers skills enabled selectively (self-contained trio; see README).
-SUPERPOWERS_SKILLS=(systematic-debugging test-driven-development verification-before-completion)
-
 say()  { printf '%s\n' "$*"; }
 run()  { if ((DRY)); then say "  [dry-run] $*"; else "$@"; fi; }
 note() { ((DRY)) || { mkdir -p "$STATE_DIR"; printf '%s\n' "$*" >> "$LEDGER"; }; }
@@ -58,21 +55,18 @@ link "$HUB/global/AGENTS.md" "$HOME/.codex/AGENTS.md"
 link "$HUB/global/AGENTS.md" "$HOME/.claude/CLAUDE.md"
 
 say "-- 2. Skills (whole directories; Claude: ~/.claude/skills, Codex: ~/.agents/skills)"
-skill_sources=()
-for d in "$HUB"/skills/*/; do skill_sources+=("${d%/}"); done
-if [[ -d "$HUB/vendor/superpowers/skills" ]]; then
-  for s in "${SUPERPOWERS_SKILLS[@]}"; do skill_sources+=("$HUB/vendor/superpowers/skills/$s"); done
-else
-  say "  ! vendor/superpowers missing: run 'git submodule update --init' first"
-fi
-for src in "${skill_sources[@]}"; do
-  name="$(basename "$src")"
+# The skill list comes from skills.json (single catalog; edit it with scripts/add-skill).
+catalog="$(python3 "$HUB/tools/skill_hub/catalog.py" "$HUB")" || { say "  ! skills.json is invalid"; exit 1; }
+while IFS=$'\t' read -r name src; do
+  if [[ ! -f "$src/SKILL.md" ]]; then
+    say "  ! $name: $src/SKILL.md missing (run 'git submodule update --init'?) — skipped"; continue
+  fi
   link "$src" "$HOME/.claude/skills/$name"
   link "$src" "$HOME/.agents/skills/$name"
   # Avoid duplicate names in Codex's legacy skills root.
   legacy="$HOME/.codex/skills/$name"
   if [[ -e "$legacy" && ! -L "$legacy" ]]; then backup "$legacy"; fi
-done
+done <<< "$catalog"
 
 say "-- 3. Safety rules"
 link "$HUB/safety/codex/embedded-safety.rules" "$HOME/.codex/rules/embedded-safety.rules"

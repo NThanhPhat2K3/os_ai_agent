@@ -45,7 +45,8 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-ENABLED = frozenset(('systematic-debugging', 'test-driven-development', 'verification-before-completion'))
+from tools.skill_hub.catalog import enabled as _enabled, load as _load_catalog
+ENABLED = frozenset(_enabled(_load_catalog(ROOT), 'superpowers'))
 NPM = 'https://registry.npmjs.org/'
 PYPI = 'https://pypi.org/pypi/'
 GITHUB = 'https://api.github.com/'

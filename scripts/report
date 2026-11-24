@@ -1,0 +1,298 @@
+#!/usr/bin/env python3
+"""Build a local HTML dashboard (skills, updates, tokens) and open it in the browser.
+
+  scripts/report [--no-network] [--no-open] [--days 30] [--out PATH]
+
+Everything stays on this machine: the page is a single static file with inline CSS/JS
+(no CDN, no server). --no-network skips the upstream update check.
+"""
+import argparse
+import html
+import json
+import os
+import re
+import subprocess
+import sys
+import webbrowser
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools.skill_hub.catalog import load, skill_dir  # noqa: E402
+
+HOME = Path.home()
+ROOTS = {'claude': HOME / '.claude/skills', 'codex': HOME / '.agents/skills',
+         'codex-legacy': HOME / '.codex/skills', 'codex-system': HOME / '.codex/skills/.system'}
+BIN = HOME / '.local/share/os_ai_agent/node/node_modules/.bin'
+
+
+def frontmatter(text):
+    m = re.match(r'---\n(.*?)\n---', text, re.S)
+    out = {}
+    if m:
+        for line in m.group(1).splitlines():
+            if ':' in line and not line.startswith(' '):
+                k, v = line.split(':', 1)
+                out[k.strip()] = v.strip().strip('"\'')
+    return out
+
+
+def read_skill(path):
+    md = Path(path) / 'SKILL.md'
+    if not md.is_file():
+        return None
+    text = md.read_text(encoding='utf-8', errors='replace')
+    return text, frontmatter(text)
+
+
+def git(*args, cwd=ROOT):
+    try:
+        return subprocess.run(['git', '-C', str(cwd), *args], capture_output=True, text=True, timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ''
+
+
+def collect_skills():
+    data = load()
+    out, managed = [], set()
+    for item in data['skills']:
+        d = skill_dir(data, item)
+        got = read_skill(d)
+        text, fm = got if got else ('', {})
+        vendor = data['vendors'].get(item.get('vendor', ''), {})
+        links = {}
+        for agent in ('claude', 'codex'):
+            p = ROOTS[agent] / item['name']
+            links[agent] = p.is_symlink() and p.resolve() == d.resolve()
+        out.append({'name': item['name'], 'group': 'managed', 'origin': vendor.get('repo', 'os_ai_agent (tự viết)'),
+                    'pin': git('rev-parse', '--short', 'HEAD', cwd=ROOT / vendor['path']) if vendor else
+                           git('log', '-1', '--format=%cs', '--', f'skills/{item["name"]}'),
+                    'description': fm.get('description', ''), 'text': text, 'claude': links['claude'],
+                    'codex': links['codex'], 'ok': bool(got) and all(links.values())})
+        managed.add(item['name'])
+    for key, root in ROOTS.items():
+        if not root.is_dir():
+            continue
+        for d in sorted(root.iterdir()):
+            if d.name.startswith('.') and key != 'codex-system' or d.name in managed:
+                continue
+            got = read_skill(d)
+            if not got:
+                continue
+            text, fm = got
+            agent = 'claude' if key == 'claude' else 'codex'
+            out.append({'name': fm.get('name', d.name), 'group': 'builtin' if key == 'codex-system' else 'other',
+                        'origin': {'claude': 'Claude (tự cài)', 'codex': 'Codex (tự cài)',
+                                   'codex-legacy': 'Codex (~/.codex/skills)', 'codex-system': 'Codex (hệ thống)'}[key],
+                        'pin': '', 'description': fm.get('description', ''), 'text': text,
+                        'claude': agent == 'claude', 'codex': agent == 'codex', 'ok': True})
+    return out
+
+
+def collect_updates(network):
+    if not network:
+        return {'skipped': True, 'items': []}
+    try:
+        from tools.skill_hub.engine import checks
+        return {'skipped': False, 'items': sorted(checks(), key=lambda r: r['id'])}
+    except Exception as error:  # report must still render offline
+        return {'skipped': False, 'items': [], 'error': str(error)}
+
+
+def ccusage(agent):
+    exe = BIN / 'ccusage'
+    if not exe.exists():
+        return None
+    env = {**os.environ, 'DISABLE_TELEMETRY': '1', 'DO_NOT_TRACK': '1'}
+    try:
+        p = subprocess.run([str(exe), agent, 'daily', '--json', '--offline', '--no-cost'],
+                           capture_output=True, text=True, timeout=120, env=env)
+        rows = json.loads(p.stdout).get('daily', [])
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    keys = ('inputTokens', 'outputTokens', 'cacheCreationTokens', 'cacheReadTokens', 'totalTokens')
+    return [{'day': r.get('period') or r.get('date'), **{k: int(r.get(k, 0) or 0) for k in keys}} for r in rows]
+
+
+def collect_tokens(days):
+    claude, codex = ccusage('claude'), ccusage('codex')
+    if claude is None and codex is None:
+        return {'available': False}
+    by_day = {}
+    for agent, rows in (('claude', claude or []), ('codex', codex or [])):
+        for r in rows:
+            by_day.setdefault(r['day'], {})[agent] = r
+    days_sorted = sorted(d for d in by_day if d)[-days:]
+    return {'available': True, 'days': [{'day': d, **by_day[d]} for d in days_sorted]}
+
+
+PAGE = r'''<!doctype html><html lang="vi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Agent Hub</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--fg:#1d2330;--mut:#5d6677;--line:#e3e6ee;--acc:#6d5efc;--claude:#d97757;--codex:#2f9e8f;
+--ok:#1f9d55;--warn:#c27c0e;--info:#2b7bd6;--bad:#d64545;--vio:#9b51e0;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0f1220;--card:#181c2e;--fg:#e8eaf2;--mut:#9aa3b8;--line:#2a3048;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#0f1220;--card:#181c2e;--fg:#e8eaf2;--mut:#9aa3b8;--line:#2a3048;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{max-width:1180px;margin:auto;padding:24px 16px 60px}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:18px}
+h1{margin:0;font-size:22px;letter-spacing:-.01em}h1 span{background:linear-gradient(90deg,var(--acc),var(--claude),var(--codex));-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:var(--mut);font-size:13px}
+nav{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 18px}
+nav button,.btn{border:1px solid var(--line);background:var(--card);color:var(--fg);padding:8px 14px;border-radius:999px;cursor:pointer;font:inherit}
+nav button[aria-selected=true]{background:var(--acc);border-color:var(--acc);color:#fff}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.tile b{display:block;font-size:22px;font-variant-numeric:tabular-nums}.tile small{color:var(--mut)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;cursor:pointer;transition:transform .12s,border-color .12s}
+.card:hover{transform:translateY(-2px);border-color:var(--acc)}
+.card h3{margin:0 0 4px;font-size:15px}.card p{margin:6px 0 10px;color:var(--mut);font-size:13px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.tags{display:flex;gap:6px;flex-wrap:wrap}.tag{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--mut)}
+.tag.claude{border-color:var(--claude);color:var(--claude)}.tag.codex{border-color:var(--codex);color:var(--codex)}
+.tag.bad{border-color:var(--bad);color:var(--bad)}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}input[type=search]{flex:1;min-width:200px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit}
+h2{font-size:16px;margin:22px 0 10px}
+table{width:100%;border-collapse:collapse;background:var(--card);border-radius:14px;overflow:hidden;border:1px solid var(--line)}
+th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;font-variant-numeric:tabular-nums}th{color:var(--mut);font-weight:600;font-size:12px}
+.badge{padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;color:#fff;white-space:nowrap}
+.s-up-to-date{background:var(--ok)}.s-update-available{background:var(--warn)}.s-too-new{background:var(--info)}.s-warning{background:var(--vio)}.s-error{background:var(--bad)}
+.scroll{overflow-x:auto}.chart{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.legend{display:flex;gap:16px;color:var(--mut);font-size:12px;margin-top:6px}.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px}
+dialog{border:1px solid var(--line);border-radius:16px;background:var(--card);color:var(--fg);max-width:min(860px,94vw);width:100%;padding:0}
+dialog::backdrop{background:#0008}dialog header{padding:14px 18px;margin:0;border-bottom:1px solid var(--line)}
+dialog pre{margin:0;padding:16px 18px;max-height:65vh;overflow:auto;white-space:pre-wrap;font:12.5px/1.55 ui-monospace,Menlo,monospace}
+code,.mono{font-family:ui-monospace,Menlo,monospace;font-size:12.5px}.howto{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px 18px 12px}
+.howto pre{background:var(--bg);border-radius:10px;padding:12px;overflow-x:auto}.muted{color:var(--mut)}
+a{color:var(--acc)}
+</style></head><body><div class="wrap">
+<header><div><h1>🤝 <span>Agent Hub</span></h1><div class="sub" id="meta"></div></div>
+<button class="btn" id="theme" type="button">🌓 Giao diện</button></header>
+<nav role="tablist"><button role="tab" data-tab="skills" aria-selected="true">🧩 Skill</button>
+<button role="tab" data-tab="updates">🔄 Cập nhật</button><button role="tab" data-tab="tokens">📊 Token</button>
+<button role="tab" data-tab="add">➕ Thêm skill</button></nav>
+<section id="tab-skills"></section><section id="tab-updates" hidden></section>
+<section id="tab-tokens" hidden></section><section id="tab-add" hidden></section>
+<dialog id="dlg"><header><b id="dlg-title"></b> <button class="btn" style="float:right" onclick="dlg.close()">Đóng</button></header><pre id="dlg-body"></pre></dialog>
+</div>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+const D = JSON.parse(document.getElementById('data').textContent);
+const $ = (t, a = {}, ...kids) => { const e = document.createElement(t);
+  for (const [k, v] of Object.entries(a)) { if (k === 'class') e.className = v; else if (k.startsWith('on')) e[k] = v; else e.setAttribute(k, v); }
+  for (const k of kids.flat()) if (k != null) e.append(k.nodeType ? k : String(k)); return e; };
+const fmt = n => n >= 1e9 ? (n/1e9).toFixed(2)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(1)+'K' : String(n);
+document.getElementById('meta').textContent = 'Tạo lúc ' + D.generated + ' · chỉ chạy trên máy này';
+try { const t = localStorage.getItem('hub-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+document.getElementById('theme').onclick = () => { const r = document.documentElement;
+  const cur = r.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  r.dataset.theme = cur === 'dark' ? 'light' : 'dark'; try { localStorage.setItem('hub-theme', r.dataset.theme); } catch (e) {} };
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.setAttribute('aria-selected', x === b));
+  document.querySelectorAll('section').forEach(s => s.hidden = s.id !== 'tab-' + b.dataset.tab); });
+const dlg = document.getElementById('dlg');
+function openSkill(s) { document.getElementById('dlg-title').textContent = s.name + ' — ' + s.origin;
+  document.getElementById('dlg-body').textContent = s.text || '(không đọc được SKILL.md)'; dlg.showModal(); }
+
+// ---- Skills
+(() => { const box = document.getElementById('tab-skills'); const S = D.skills;
+  const managed = S.filter(s => s.group === 'managed');
+  box.append($('div', {class: 'tiles'},
+    $('div', {class: 'tile'}, $('b', {}, managed.length), $('small', {}, 'skill dùng chung (skills.json)')),
+    $('div', {class: 'tile'}, $('b', {}, managed.filter(s => s.ok).length + '/' + managed.length), $('small', {}, 'đã link đủ cho Claude + Codex')),
+    $('div', {class: 'tile'}, $('b', {}, S.filter(s => s.group !== 'managed').length), $('small', {}, 'skill riêng / hệ thống'))));
+  const q = $('input', {type: 'search', placeholder: '🔎 Tìm skill theo tên hoặc mô tả…'});
+  box.append($('div', {class: 'toolbar'}, q));
+  const lists = {};
+  for (const [g, title] of [['managed', '⭐ Chuẩn chung (cả hai agent)'], ['other', 'Skill riêng từng agent'], ['builtin', 'Skill hệ thống của Codex']]) {
+    const items = S.filter(s => s.group === g); if (!items.length) continue;
+    box.append($('h2', {}, title)); const grid = $('div', {class: 'grid'}); box.append(grid); lists[g] = [grid, items]; }
+  function render() { const f = q.value.toLowerCase();
+    for (const [grid, items] of Object.values(lists)) { grid.replaceChildren(...items
+      .filter(s => !f || (s.name + ' ' + s.description).toLowerCase().includes(f))
+      .map(s => $('div', {class: 'card', tabindex: 0, onclick: () => openSkill(s), onkeydown: e => e.key === 'Enter' && openSkill(s)},
+        $('h3', {}, s.name), $('div', {class: 'muted mono'}, s.origin + (s.pin ? ' @ ' + s.pin : '')),
+        $('p', {}, s.description || '—'),
+        $('div', {class: 'tags'}, s.claude ? $('span', {class: 'tag claude'}, 'Claude') : null,
+          s.codex ? $('span', {class: 'tag codex'}, 'Codex') : null, s.ok ? null : $('span', {class: 'tag bad'}, 'link lỗi'))))); } }
+  q.oninput = render; render(); })();
+
+// ---- Updates
+(() => { const box = document.getElementById('tab-updates'); const U = D.updates;
+  const label = {'up-to-date': 'mới nhất', 'update-available': 'có bản mới', 'too-new': 'quá mới (<14 ngày)', warning: 'cảnh báo', error: 'lỗi'};
+  if (U.skipped) { box.append($('p', {class: 'muted'}, 'Bỏ qua kiểm tra mạng (--no-network). Chạy lại scripts/report để kiểm tra.')); return; }
+  if (U.error) box.append($('p', {class: 'muted'}, 'Lỗi kiểm tra: ' + U.error));
+  const count = s => U.items.filter(i => i.status === s).length;
+  box.append($('div', {class: 'tiles'}, ...['up-to-date', 'update-available', 'too-new', 'warning', 'error'].map(s =>
+    $('div', {class: 'tile'}, $('b', {}, count(s)), $('span', {class: 'badge s-' + s}, label[s])))));
+  const short = v => v && v.length === 40 ? v.slice(0, 7) : (v || '—');
+  box.append($('div', {class: 'scroll'}, $('table', {}, $('tr', {}, ...['Thành phần', 'Đang dùng', 'Mới nhất', 'Đề xuất', 'Trạng thái', 'Ghi chú'].map(h => $('th', {}, h))),
+    ...U.items.map(i => $('tr', {}, $('td', {}, $('b', {}, i.id)), $('td', {class: 'mono'}, short(i.current)), $('td', {class: 'mono'}, short(i.latest || i.current)),
+      $('td', {class: 'mono'}, short(i.recommended)), $('td', {}, $('span', {class: 'badge s-' + i.status}, label[i.status] || i.status)),
+      $('td', {class: 'muted'}, [i.warning, i.error, i.changed_skills && 'đổi: ' + i.changed_skills.join(', ')].filter(Boolean).join(' · ')))))));
+  box.append($('p', {class: 'muted'}, 'Không có gì tự cập nhật. Sửa pins.json (hoặc checkout submodule) → scripts/doctor.sh → nhờ agent còn lại review → commit → scripts/install.sh.')); })();
+
+// ---- Tokens
+(() => { const box = document.getElementById('tab-tokens'); const T = D.tokens;
+  if (!T.available) { box.append($('p', {class: 'muted'}, 'Chưa cài token tools. Chạy: scripts/install.sh --with-token-tools')); return; }
+  const tot = (a, n) => T.days.slice(-n).reduce((s, d) => s + ((d[a] || {}).totalTokens || 0), 0);
+  const out = (a, n) => T.days.slice(-n).reduce((s, d) => s + ((d[a] || {}).outputTokens || 0), 0);
+  box.append($('div', {class: 'tiles'}, ...[[1, 'Hôm nay'], [7, '7 ngày'], [30, '30 ngày']].flatMap(([n, l]) => [
+    $('div', {class: 'tile', style: 'border-left:4px solid var(--claude)'}, $('small', {}, 'Claude · ' + l), $('b', {}, fmt(tot('claude', n))), $('small', {}, 'output ' + fmt(out('claude', n)))),
+    $('div', {class: 'tile', style: 'border-left:4px solid var(--codex)'}, $('small', {}, 'Codex · ' + l), $('b', {}, fmt(tot('codex', n))), $('small', {}, 'output ' + fmt(out('codex', n))))])));
+  const W = Math.max(560, T.days.length * 28), H = 240, pad = 36, max = Math.max(1, ...T.days.map(d => ((d.claude || {}).totalTokens || 0) + ((d.codex || {}).totalTokens || 0)));
+  const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H + 30}`); svg.setAttribute('width', '100%'); svg.style.minWidth = Math.min(W, 560) + 'px'; svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', 'Token theo ngày, Claude và Codex');
+  const el = (t, a) => { const e = document.createElementNS(ns, t); for (const k in a) e.setAttribute(k, a[k]); svg.append(e); return e; };
+  for (let i = 0; i <= 4; i++) { const y = pad + (H - pad) * i / 4; el('line', {x1: 40, x2: W, y1: y, y2: y, stroke: 'var(--line)'});
+    el('text', {x: 0, y: y + 4, fill: 'var(--mut)', 'font-size': 10}).textContent = fmt(max * (1 - i / 4)); }
+  const bw = (W - 50) / T.days.length;
+  T.days.forEach((d, i) => { const x = 46 + i * bw, c = (d.claude || {}).totalTokens || 0, k = (d.codex || {}).totalTokens || 0;
+    const hc = (H - pad) * c / max, hk = (H - pad) * k / max;
+    const g1 = el('rect', {x, y: H - hc, width: bw * .7, height: hc, rx: 3, fill: 'var(--claude)'});
+    const g2 = el('rect', {x, y: H - hc - hk, width: bw * .7, height: hk, rx: 3, fill: 'var(--codex)'});
+    for (const g of [g1, g2]) { const t = document.createElementNS(ns, 'title'); t.textContent = `${d.day}\nClaude: ${fmt(c)}\nCodex: ${fmt(k)}`; g.append(t); }
+    if (i % Math.ceil(T.days.length / 10) === 0) el('text', {x, y: H + 16, fill: 'var(--mut)', 'font-size': 10}).textContent = d.day.slice(5); });
+  box.append($('h2', {}, 'Token theo ngày'), $('div', {class: 'chart scroll'}, svg,
+    $('div', {class: 'legend'}, $('span', {}, $('i', {style: 'background:var(--claude)'}), 'Claude Code'), $('span', {}, $('i', {style: 'background:var(--codex)'}), 'Codex'))));
+  box.append($('p', {class: 'muted'}, 'Phần lớn là token đọc từ cache. Số liệu từ ccusage (offline, local). Không hiển thị tiền: giá API ≠ hoá đơn gói đăng ký.')); })();
+
+// ---- Add skill
+(() => { const box = document.getElementById('tab-add');
+  const sec = (t, ...k) => box.append($('div', {class: 'howto'}, $('h2', {}, t), ...k));
+  sec('1. Tìm skill xịn', $('p', {}, 'Nguồn uy tín: ', $('a', {href: 'https://github.com/anthropics/skills', target: '_blank', rel: 'noopener'}, 'anthropics/skills'), ' · ',
+    $('a', {href: 'https://github.com/obra/superpowers', target: '_blank', rel: 'noopener'}, 'obra/superpowers'), ' · ',
+    $('a', {href: 'https://github.com/hesreallyhim/awesome-claude-code', target: '_blank', rel: 'noopener'}, 'awesome-claude-code'), ' · ',
+    $('a', {href: 'https://skills.sh', target: '_blank', rel: 'noopener'}, 'skills.sh')),
+    $('p', {class: 'muted'}, 'Chỉ thêm skill giải quyết một việc cụ thể em hay làm. Ít mà chất hơn nhiều mà loãng.'));
+  sec('2. Thử trước (không thay đổi gì)', $('pre', {}, 'scripts/add-skill owner/repo ten-skill --dry-run'),
+    $('p', {class: 'muted'}, 'Tự kiểm tra: SKILL.md hợp lệ, trùng tên, phụ thuộc skill chưa bật, có kèm script/code không.'));
+  sec('3. Thêm và áp dụng', $('pre', {}, 'scripts/add-skill owner/repo ten-skill\nscripts/doctor.sh\n# nhờ Codex review (ask-codex-live), rồi:\ngit add -A && git commit -m "Add skill ten-skill"\nscripts/install.sh'),
+    $('p', {class: 'muted'}, 'Repo mới được pin vào commit ≥14 ngày tuổi. Gỡ: scripts/add-skill --remove ten-skill')); })();
+</script></body></html>'''
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument('--no-network', action='store_true')
+    ap.add_argument('--no-open', action='store_true')
+    ap.add_argument('--days', type=int, default=30)
+    ap.add_argument('--out', default=str(HOME / '.cache/os_ai_agent/report.html'))
+    args = ap.parse_args()
+    data = {'generated': datetime.now(timezone.utc).astimezone().strftime('%Y-%m-%d %H:%M'),
+            'skills': collect_skills(), 'updates': collect_updates(not args.no_network),
+            'tokens': collect_tokens(args.days)}
+    payload = json.dumps(data, ensure_ascii=False).replace('</', '<\\/')   # safe inside <script>
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(PAGE.replace('__DATA__', payload), encoding='utf-8')
+    os.chmod(out, 0o600)   # contains skill text and usage numbers: keep private
+    print(f'Report: {out}')
+    if not args.no_open:
+        webbrowser.open(out.as_uri())
+
+
+if __name__ == '__main__':
+    main()
