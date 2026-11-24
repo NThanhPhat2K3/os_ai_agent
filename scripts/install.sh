@@ -72,6 +72,19 @@ while IFS=$'\t' read -r name src agents; do
     if [[ -e "$legacy" && ! -L "$legacy" ]]; then backup "$legacy"; fi
   fi
 done <<< "$catalog"
+# Prune links that skills.json no longer assigns to that agent (a skill retargeted from both
+# agents to one, or removed from the catalog). Only links the LEDGER proves this installer
+# created are touched; a symlink the user made by hand is never removed.
+owned() { [[ -f "$LEDGER" ]] && grep -qxF "LINK	$1	$(readlink "$1")" "$LEDGER"; }
+for pair in "claude:$HOME/.claude/skills" "codex:$HOME/.agents/skills"; do
+  agent="${pair%%:*}"; root="${pair#*:}"
+  for l in "$root"/*; do
+    [[ -L "$l" && "$(readlink "$l")" == "$HUB/"* ]] && owned "$l" || continue
+    if ! awk -F'\t' -v n="$(basename "$l")" -v a="$agent" '$1==n && (","$3",") ~ (","a",") {f=1} END{exit !f}' <<< "$catalog"; then
+      run rm -- "$l"; say "  - $l (no longer assigned to $agent in skills.json)"
+    fi
+  done
+done
 
 say "-- 3. Safety rules"
 link "$HUB/safety/codex/embedded-safety.rules" "$HOME/.codex/rules/embedded-safety.rules"

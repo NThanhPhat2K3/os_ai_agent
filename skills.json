@@ -120,33 +120,6 @@
       "agents": [
         "codex"
       ]
-    },
-    {
-      "name": "docx",
-      "source": "vendor",
-      "vendor": "anthropics-skills",
-      "agents": [
-        "codex"
-      ],
-      "notes": "Bundled scripts/office/soffice.py may compile a C shim with gcc into the shared temp dir and LD_PRELOAD it into LibreOffice (sandbox workaround). On shared/company machines prefer a private TMPDIR and review before running."
-    },
-    {
-      "name": "xlsx",
-      "source": "vendor",
-      "vendor": "anthropics-skills",
-      "agents": [
-        "codex"
-      ],
-      "notes": "Bundled scripts/office/soffice.py may compile a C shim with gcc into the shared temp dir and LD_PRELOAD it into LibreOffice (sandbox workaround). On shared/company machines prefer a private TMPDIR and review before running."
-    },
-    {
-      "name": "pptx",
-      "source": "vendor",
-      "vendor": "anthropics-skills",
-      "agents": [
-        "codex"
-      ],
-      "notes": "Bundled scripts/office/soffice.py may compile a C shim with gcc into the shared temp dir and LD_PRELOAD it into LibreOffice (sandbox workaround). On shared/company machines prefer a private TMPDIR and review before running."
     }
   ]
 }

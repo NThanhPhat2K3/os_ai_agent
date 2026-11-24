@@ -91,14 +91,14 @@ Tùy chọn: `--with-token-tools` (ccusage + tokscale), `--with-serena`, `--with
    /plugin install codex@openai-codex
    /codex:setup
    ```
-3. Kiểm tra: hỏi Codex *"bạn có những skill nào?"*. Phải thấy các skill có `codex` trong `skills.json` (hiện 15).
+3. Kiểm tra: hỏi Codex *"bạn có những skill nào?"*. Phải thấy các skill có `codex` trong `skills.json` (hiện 13).
 
 ### 7. Checklist: thế nào là xong ✅
 
 - [ ] `scripts/doctor.sh` kết thúc bằng `0 problem(s)`.
 - [ ] `python3 -m unittest` báo `OK`.
 - [ ] Mở Claude Code: gõ `/skills` (hoặc hỏi *"bạn có những skill nào?"*) thấy các skill dành cho Claude (hiện 12).
-- [ ] Mở **session Codex mới**: hỏi *"bạn có những skill nào?"* thấy các skill dành cho Codex (hiện 15).
+- [ ] Mở **session Codex mới**: hỏi *"bạn có những skill nào?"* thấy các skill dành cho Codex (hiện 13).
 - [ ] Thử chặn an toàn: nhờ Claude chạy `espefuse.py --version`, phải bị **từ chối**.
 - [ ] Claude gọi được Codex: gõ `/codex:review` trong một repo bất kỳ.
 - [ ] Codex gọi được Claude: trong Codex nói *"dùng skill ask-claude hỏi Claude 1+1 bằng mấy"*.
@@ -155,7 +155,10 @@ Ledger và backup nằm ở `~/.local/state/os_ai_agent/`. Mục nào bạn đã
 | **OpenAI** `security-best-practices`, `security-threat-model` (openai/skills, Apache-2.0) | Bật | Rà soát bảo mật theo ngôn ngữ/framework, lập threat model |
 | **OpenAI** `gh-fix-ci`, `gh-address-comments` | Bật | Sửa CI GitHub Actions bị lỗi, xử lý comment review trên PR (dùng `gh` với tài khoản của bạn) |
 | **Anthropic** `mcp-builder` (anthropics/skills, Apache-2.0) | Bật | Viết MCP server chất lượng (Python/TypeScript) |
-| **Anthropic** `pdf`, `docx`, `xlsx`, `pptx` | **Chỉ Codex** | Đọc/tạo PDF (datasheet!), Word, Excel, PowerPoint. Claude đã có sẵn bản đồng bộ từ claude.ai nên không link cho Claude |
+| **Anthropic** `pdf` | **Chỉ Codex** | Đọc/tạo PDF (datasheet!). Claude đã có sẵn bản đồng bộ từ claude.ai nên không link cho Claude |
+
+Không dùng `docx`/`xlsx`/`pptx` của Anthropic: script đi kèm có thể biên dịch và `LD_PRELOAD` một thư viện ở đường dẫn cố
+định trong `/tmp` (rủi ro trên máy dùng chung, Codex review 24/11/2026), và Codex đã có plugin tài liệu riêng.
 
 Trường `agents` trong `skills.json` chọn skill dành cho agent nào: `ask-claude` chỉ cho Codex, `ask-codex-live` chỉ cho
 Claude. Skill có `notes` (cảnh báo đã biết) được hiển thị màu cam trong Agent Hub.
