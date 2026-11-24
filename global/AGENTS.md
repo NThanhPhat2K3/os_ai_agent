@@ -1,6 +1,6 @@
 # Global agent rules (Phát)
 
-Source of truth: `~/Desktop/00.Developer/02.skill/os_ai_agent/global/AGENTS.md`.
+Source of truth: `global/AGENTS.md` in the os_ai_agent repo (wherever it is cloned; `readlink -f ~/.codex/AGENTS.md` shows it).
 Linked as `~/.codex/AGENTS.md` (Codex) and `~/.claude/CLAUDE.md` (Claude Code).
 Project-level `AGENTS.md` / `CLAUDE.md` add to or override these rules.
 

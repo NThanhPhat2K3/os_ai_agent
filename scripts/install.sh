@@ -3,7 +3,7 @@
 # Idempotent. Backs up anything it replaces. Records every action so
 # scripts/uninstall.sh can undo exactly what this script did.
 #
-# Usage: scripts/install.sh [--dry-run] [--with-serena] [--with-basic-memory] [--with-token-tools]
+# Usage: scripts/install.sh [--dry-run] [--no-context7] [--with-serena] [--with-basic-memory] [--with-token-tools]
 set -euo pipefail
 
 HUB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,13 +12,14 @@ LEDGER="$STATE_DIR/ledger.txt"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP_DIR="$STATE_DIR/backups/$STAMP"
 
-DRY=0; WITH_SERENA=0; WITH_BM=0; WITH_TOKENS=0
+DRY=0; WITH_SERENA=0; WITH_BM=0; WITH_TOKENS=0; NO_CONTEXT7=0
 for a in "$@"; do
   case "$a" in
     --dry-run) DRY=1 ;;
     --with-serena) WITH_SERENA=1 ;;
     --with-basic-memory) WITH_BM=1 ;;
     --with-token-tools) WITH_TOKENS=1 ;;
+    --no-context7) NO_CONTEXT7=1 ;;   # e.g. company policy: no external doc service
     -h|--help) sed -n '2,7p' "$0"; exit 0 ;;
     *) echo "Unknown option: $a" >&2; exit 2 ;;
   esac
@@ -116,6 +117,7 @@ say "-- 4. MCP servers"
 mcp_fp() { "$1" mcp get "$2" 2>/dev/null | grep -viE '^[[:space:]]*status:' | sha256sum | cut -d' ' -f1; }
 mcp_add() { # mcp_add <client> <name> <command...>
   local client="$1" name="$2"; shift 2
+  if ! command -v "$client" >/dev/null; then say "  ! $client CLI not found: skipped $name (install it, then re-run)"; return; fi
   if "$client" mcp get "$name" >/dev/null 2>&1; then
     say "  = $client: $name (already configured, left untouched)"; return
   fi
@@ -123,8 +125,12 @@ mcp_add() { # mcp_add <client> <name> <command...>
   ((DRY)) || note "MCP	$client	$name	$(mcp_fp "$client" "$name")"
   say "  + $client: $name"
 }
-mcp_add claude context7 claude mcp add --scope user --transport http context7 https://mcp.context7.com/mcp
-mcp_add codex  context7 codex mcp add context7 -- npx -y @upstash/context7-mcp@${CONTEXT7_VERSION}
+if ((NO_CONTEXT7)); then
+  say "  · context7 skipped (--no-context7)"
+else
+  mcp_add claude context7 claude mcp add --scope user --transport http context7 https://mcp.context7.com/mcp
+  mcp_add codex  context7 codex mcp add context7 -- npx -y @upstash/context7-mcp@${CONTEXT7_VERSION}
+fi
 
 need_uv() {
   command -v uv >/dev/null || { say "  ! 'uv' not found. Install it first: https://docs.astral.sh/uv/getting-started/installation/"; return 1; }
