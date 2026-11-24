@@ -121,10 +121,14 @@ class UpstreamTest(unittest.TestCase):
         data = load()
         for s in data['skills']:
             if 'upstream' in s:
-                from tools.skill_hub.catalog import upstream_link
-                link, target = upstream_link(data, s)
-                self.assertTrue(link.is_symlink(), s['name'])
-                self.assertEqual(link.resolve(), target.resolve())
+                from tools.skill_hub.catalog import upstream_links
+                for link, target in upstream_links(data, s):
+                    self.assertTrue(link.is_symlink(), link)
+                    self.assertEqual(link.resolve(), target.resolve())
+                # exactly one SKILL.md reachable inside the wrapper (no nested upstream skill)
+                wrapper = ROOT / 'skills' / s['name']
+                found = [p for p in wrapper.rglob('SKILL.md')]
+                self.assertEqual([p.relative_to(wrapper) for p in found], [Path('SKILL.md')], s['name'])
 
     def test_bad_upstream_rejected(self):
         from tools.skill_hub.catalog import load

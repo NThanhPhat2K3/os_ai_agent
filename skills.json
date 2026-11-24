@@ -171,7 +171,11 @@
       "upstream": {
         "vendor": "nextlevelbuilder-ui-ux-pro-max-skill",
         "file": ".claude/skills/ui-ux-pro-max/SKILL.md",
-        "link": "upstream"
+        "extra": [
+          "scripts",
+          "data",
+          "references"
+        ]
       },
       "notes": "Wrapper: upstream commands use ${CLAUDE_PLUGIN_ROOT}, which is unset outside a plugin; use this skill's search.sh instead."
     }

@@ -27,6 +27,8 @@ if catalog="$(python3 "$HUB/tools/skill_hub/catalog.py" "$HUB")"; then pass "ski
 while IFS=$'\t' read -r n d agents; do
   [[ -n "$n" ]] || continue
   [[ -f "$d/SKILL.md" ]] || fail "$n: SKILL.md missing at $d"
+  nested=$(find -L "$d" -mindepth 2 -name SKILL.md 2>/dev/null | head -1)
+  [[ -z "$nested" ]] || fail "$n: nested SKILL.md ($nested) would be registered as a second skill"
   [[ ",$agents," == *",claude,"* ]] && chk_link "$d" "$HOME/.claude/skills/$n"
   if [[ ",$agents," == *",codex,"* ]]; then
     chk_link "$d" "$HOME/.agents/skills/$n"

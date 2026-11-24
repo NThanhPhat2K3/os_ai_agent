@@ -6,9 +6,11 @@ description: "UI/UX design intelligence for web, mobile, and desktop. This skill
 # ui-ux-pro-max (wrapper)
 
 Upstream: [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) (MIT),
-pinned in `vendor/nextlevelbuilder-ui-ux-pro-max-skill`. Its full skill folder is linked here as `upstream/`.
+pinned in `vendor/nextlevelbuilder-ui-ux-pro-max-skill`. Its SKILL.md is linked here as `upstream.md`,
+and its `scripts/`, `data/` and `references/` folders are linked next to it (no second SKILL.md, so agents
+that scan folders recursively do not register the upstream copy as another skill).
 
-1. Read `upstream/SKILL.md` and follow it. Relative links in it (references/, data/) are relative to `upstream/`.
+1. Read `upstream.md` and follow it. Its relative links (references/, data/) work from this folder.
 2. Upstream commands look like `python "${CLAUDE_PLUGIN_ROOT}/.claude/skills/ui-ux-pro-max/scripts/search.py" ARGS`.
    That variable is not set in this setup. Run instead, with the same ARGS:
    `bash <folder containing this SKILL.md>/search.sh ARGS`

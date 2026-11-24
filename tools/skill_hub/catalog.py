@@ -26,7 +26,7 @@ def load(root=ROOT):
             raise ValueError(f"bad agents for {skill['name']}: {agents!r}")
         up = skill.get('upstream')
         if up is not None and (up.get('vendor') not in data['vendors'] or not SAFE_DIR.fullmatch(up.get('file', ''))
-                               or up.get('link', 'upstream.md') not in ('upstream.md', 'upstream')):
+                               or not all(NAME.fullmatch(x) for x in up.get('extra', []))):
             raise ValueError(f"bad upstream for {skill['name']}")
         for key in ('skills_dir',):
             if key in skill and not SAFE_DIR.fullmatch(skill[key]):
@@ -55,12 +55,17 @@ def agents_of(skill):
     return list(skill.get('agents', AGENTS))
 
 
-def upstream_link(data, skill, root=ROOT):
-    """(link path inside the wrapper, path it must resolve to) for a wrapper skill."""
+def upstream_links(data, skill, root=ROOT):
+    """[(link inside the wrapper, path it must resolve to)] for a wrapper skill.
+
+    upstream.md -> the pinned upstream file; each name in 'extra' -> the folder of that name
+    next to it (scripts, data...). Never link a folder containing another SKILL.md: agents
+    that scan recursively would register it as a second skill.
+    """
     up = skill['upstream']
     target = Path(root) / data['vendors'][up['vendor']]['path'] / up['file']
-    name = up.get('link', 'upstream.md')
-    return Path(root) / 'skills' / skill['name'] / name, (target if name == 'upstream.md' else target.parent)
+    wrapper = Path(root) / 'skills' / skill['name']
+    return [(wrapper / 'upstream.md', target)] + [(wrapper / x, target.parent / x) for x in up.get('extra', [])]
 
 
 def enabled(data, vendor):
@@ -74,6 +79,10 @@ if __name__ == '__main__':
     for item in catalog['skills']:
         print(f"{item['name']}\t{skill_dir(catalog, item, root)}\t{','.join(agents_of(item))}")
     if '--check-upstream' in sys.argv:
-        bad = [s['name'] for s in catalog['skills'] if 'upstream' in s
-               and (lambda l, t: not (l.is_symlink() and l.resolve() == t.resolve() and t.exists()))(*upstream_link(catalog, s, root))]
+        def broken(skill):
+            links = upstream_links(catalog, skill, root)
+            wrong = any(not (l.is_symlink() and l.resolve() == t.resolve() and t.exists()) for l, t in links)
+            nested = any(p.name == 'SKILL.md' for l, _ in links[1:] for p in l.rglob('SKILL.md'))
+            return wrong or nested
+        bad = [s['name'] for s in catalog['skills'] if 'upstream' in s and broken(s)]
         sys.exit(f"upstream link wrong or missing: {', '.join(bad)}" if bad else 0)
