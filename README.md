@@ -58,6 +58,7 @@ Phiên bản nằm duy nhất ở `pins.json` (và commit của submodule `vendo
 ```bash
 scripts/check-updates           # bảng trạng thái: mới nhất / có bản mới / quá mới / CẢNH BÁO / lỗi
 scripts/check-updates --json    # cho script; exit 10 nếu có bản nên cập nhật
+scripts/install.sh --with-token-tools   # một lần: cài ccusage + tokscale đã pin vào ~/.local/share/os_ai_agent
 scripts/tokens                  # token theo ngày (ccusage), Claude + Codex
 scripts/tokens weekly           # theo tuần; mọi tham số khác chuyển cho ccusage
 scripts/tokens tui              # dashboard màu (tokscale)
@@ -68,8 +69,12 @@ scripts/tokens tui              # dashboard màu (tokscale)
   đầu phụ thuộc vào skill chưa bật.
 - Không có gì tự động cập nhật. Quy trình: sửa `pins.json` (hoặc `git -C vendor/superpowers checkout <sha>`)
   → `scripts/doctor.sh` → nhờ agent còn lại review → commit → `scripts/install.sh`.
-- Token chỉ đọc log trên máy, chạy `--offline`, tắt telemetry. Số tiền ccusage hiển thị là **ước tính
-  theo giá API**, không phải hóa đơn thật của gói đăng ký.
+- Token tools được cài **một lần** với phiên bản pin và `--ignore-scripts`; `scripts/tokens` chỉ chạy bản đã cài
+  (không `npx`, không tải gì khi chạy), `--offline`, tắt telemetry, không dùng tính năng submit/login của tokscale.
+- Mặc định **ẩn cột tiền** (`--no-cost`): đó chỉ là ước tính theo giá API, không phải hóa đơn gói đăng ký.
+  Thêm `--show-cost` nếu vẫn muốn xem.
+- Đây là tool bên thứ ba: chúng đọc log phiên làm việc trên máy (có cả nội dung) để đếm token. Mình tin vào việc
+  chúng là opensource phổ biến và chạy offline, chứ không có bằng chứng kỹ thuật rằng chúng chỉ chạm trường usage.
 
 ## Dùng cho một dự án mới
 

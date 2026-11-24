@@ -76,6 +76,24 @@ def check_package(name, pin, cooldown, now):
     return {'id': name, 'current': pin, **choose_release(pin, versions, cooldown, now)}
 
 
+def choose_commit(current, candidates, cooldown=14, now=None):
+    """Pick an upgrade target from commits listed newest first (GitHub order).
+
+    Only commits NEWER than `current` are considered, so this can never suggest a
+    downgrade. If `current` is not in the list, it is older than every listed commit.
+    """
+    now = now or datetime.now(timezone.utc)
+    shas = [sha for sha, _ in candidates]
+    newer = candidates[:shas.index(current)] if current in shas else candidates
+    base = {'id': 'superpowers', 'current': current, 'latest': shas[0] if shas else current}
+    if not newer:
+        return {**base, 'status': 'up-to-date', 'recommended': None}
+    eligible = [sha for sha, when in newer if when <= now and (now - when).total_seconds() >= cooldown * 86400]
+    if not eligible:
+        return {**base, 'status': 'too-new', 'recommended': None}
+    return {**base, 'status': 'update-available', 'recommended': eligible[0]}
+
+
 def run_git(*args):
     return subprocess.run(['git', '-C', str(ROOT), *args], check=True, capture_output=True, text=True, timeout=10).stdout.strip()
 
@@ -97,15 +115,8 @@ def check_superpowers(cooldown, now):
     if not isinstance(commits, list) or not commits:
         raise ValueError('GitHub returned no commits')
     candidates = [(item['sha'], datetime.fromisoformat(item['commit']['committer']['date'].replace('Z', '+00:00'))) for item in commits]
-    latest = candidates[0][0]
-    if latest == current:
-        return {'id': 'superpowers', 'current': current, 'latest': latest, 'status': 'up-to-date', 'recommended': None}
-    eligible = [sha for sha, when in candidates if when <= now and (now - when).total_seconds() >= cooldown * 86400]
-    candidate = eligible[0] if eligible else None
-    if candidate == current:
-        candidate = None
-    result = {'id': 'superpowers', 'current': current, 'latest': latest, 'recommended': candidate,
-              'status': 'update-available' if candidate else 'too-new'}
+    result = choose_commit(current, candidates, cooldown, now)
+    candidate = result['recommended']
     if candidate:
         # Would the enabled trio start depending on a skill we have not enabled?
         missing = set()

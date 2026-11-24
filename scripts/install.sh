@@ -3,7 +3,7 @@
 # Idempotent. Backs up anything it replaces. Records every action so
 # scripts/uninstall.sh can undo exactly what this script did.
 #
-# Usage: scripts/install.sh [--dry-run] [--with-serena] [--with-basic-memory]
+# Usage: scripts/install.sh [--dry-run] [--with-serena] [--with-basic-memory] [--with-token-tools]
 set -euo pipefail
 
 HUB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,12 +12,13 @@ LEDGER="$STATE_DIR/ledger.txt"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP_DIR="$STATE_DIR/backups/$STAMP"
 
-DRY=0; WITH_SERENA=0; WITH_BM=0
+DRY=0; WITH_SERENA=0; WITH_BM=0; WITH_TOKENS=0
 for a in "$@"; do
   case "$a" in
     --dry-run) DRY=1 ;;
     --with-serena) WITH_SERENA=1 ;;
     --with-basic-memory) WITH_BM=1 ;;
+    --with-token-tools) WITH_TOKENS=1 ;;
     -h|--help) sed -n '2,7p' "$0"; exit 0 ;;
     *) echo "Unknown option: $a" >&2; exit 2 ;;
   esac
@@ -150,6 +151,23 @@ if ((WITH_BM)) && need_uv; then
   run mkdir -p "$HOME/agent-memory"; run chmod 700 "$HOME/agent-memory"
   mcp_add claude basic-memory claude mcp add --scope user basic-memory -e BASIC_MEMORY_HOME="$HOME/agent-memory" -- basic-memory mcp
   mcp_add codex  basic-memory codex mcp add basic-memory --env BASIC_MEMORY_HOME="$HOME/agent-memory" -- basic-memory mcp
+fi
+
+if ((WITH_TOKENS)); then
+  # Pinned ccusage + tokscale in a private npm prefix. --ignore-scripts: no install-time code runs.
+  # After this, scripts/tokens runs these local binaries and never fetches from the network.
+  TOOLS_DIR="$HOME/.local/share/os_ai_agent/node"
+  pin() { python3 "$HUB/tools/skill_hub/pins.py" "$HUB/pins.json" "$1"; }
+  if [[ -x "$TOOLS_DIR/node_modules/.bin/ccusage" && -x "$TOOLS_DIR/node_modules/.bin/tokscale" ]] \
+     && "$TOOLS_DIR/node_modules/.bin/ccusage" --version 2>/dev/null | grep -qF "$(pin ccusage)"; then
+    say "  = token tools already installed in $TOOLS_DIR"
+  else
+    [[ -e "$TOOLS_DIR" ]] || note "NPMDIR	$TOOLS_DIR"
+    run mkdir -p "$TOOLS_DIR"
+    run npm install --prefix "$TOOLS_DIR" --no-save --no-audit --no-fund --ignore-scripts \
+      "ccusage@$(pin ccusage)" "tokscale@$(pin tokscale)"
+    say "  + token tools: ccusage@$(pin ccusage), tokscale@$(pin tokscale) -> $TOOLS_DIR"
+  fi
 fi
 
 say "== done. Restart Claude Code and Codex, then run scripts/doctor.sh"

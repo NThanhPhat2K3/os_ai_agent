@@ -49,6 +49,9 @@ PY
       elif [[ -n "$c" && "$(mcp_fp "$a" "$b")" == "$c" ]]; then
         if run "$a" mcp remove "$b" >/dev/null 2>&1; then echo "  - $a mcp: $b"; else keep "$line" "$a mcp remove $b failed"; fi
       else keep "$line" "$a mcp $b was reconfigured by the user"; fi ;;
+    NPMDIR) # a=private npm prefix created by install.sh (only ever this exact path)
+      if [[ "$a" == "$HOME/.local/share/os_ai_agent/node" && -d "$a" ]]; then run rm -rf -- "$a"; echo "  - $a"
+      else keep "$line" "unexpected NPMDIR path $a"; fi ;;
     UVTOOL) # a=package
       if run uv tool uninstall "$a" >/dev/null 2>&1; then echo "  - uv tool: $a"; else keep "$line" "uv tool uninstall $a failed"; fi ;;
     "") ;;

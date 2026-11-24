@@ -1,18 +1,35 @@
 #!/usr/bin/env bash
-# Token usage for Claude Code + Codex, using pinned upstream tools. Local data only.
-#   scripts/tokens              # ccusage daily report (all detected agents)
+# Token usage for Claude Code + Codex with pinned, locally installed tools. Local data only.
+#   scripts/tokens              # ccusage daily report (all detected agents), tokens only
 #   scripts/tokens tui          # tokscale interactive dashboard (colourful TUI)
-#   scripts/tokens <args...>    # any other args go to ccusage, e.g. `weekly`, `codex daily`, `blocks --live`
+#   scripts/tokens <args...>    # other args go to ccusage, e.g. `weekly`, `codex daily`, `blocks --live`
+# Cost columns are hidden (--no-cost): they are API-price estimates, not your real bill.
+# Add --show-cost to see them anyway.
 set -euo pipefail
 HUB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BIN="$HOME/.local/share/os_ai_agent/node/node_modules/.bin"
 pin() { python3 "$HUB/tools/skill_hub/pins.py" "$HUB/pins.json" "$1"; }
 
-# Privacy: no telemetry, no social submit, offline pricing (no network needed).
+if [[ ! -x "$BIN/ccusage" || ! -x "$BIN/tokscale" ]]; then
+  echo "Token tools not installed. Run: $HUB/scripts/install.sh --with-token-tools" >&2
+  exit 2
+fi
+if ! "$BIN/ccusage" --version 2>/dev/null | grep -qF "$(pin ccusage)"; then
+  echo "Installed ccusage does not match pins.json ($(pin ccusage)). Re-run install.sh --with-token-tools." >&2
+  exit 2
+fi
+
+# Privacy: no telemetry, offline pricing; we never use tokscale's submit/login features.
 export DISABLE_TELEMETRY=1 DO_NOT_TRACK=1
 
 if [[ "${1:-}" == "tui" ]]; then
   shift
-  exec npx -y "tokscale@$(pin tokscale)" tui --offline -c claude,codex "$@"
+  exec "$BIN/tokscale" tui --offline -c claude,codex "$@"
 fi
 [[ $# -eq 0 ]] && set -- daily
-exec npx -y "ccusage@$(pin ccusage)" "$@" --offline
+cost=(--no-cost)
+args=()
+for a in "$@"; do
+  if [[ "$a" == "--show-cost" ]]; then cost=(); else args+=("$a"); fi
+done
+exec "$BIN/ccusage" "${args[@]}" --offline "${cost[@]}"
