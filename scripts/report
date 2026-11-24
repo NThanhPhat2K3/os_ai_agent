@@ -123,8 +123,22 @@ def collect_tokens(days):
     for agent, rows in (('claude', claude or []), ('codex', codex or [])):
         for r in rows:
             by_day.setdefault(r['day'], {})[agent] = r
-    days_sorted = sorted(d for d in by_day if d)[-days:]
-    return {'available': True, 'days': [{'day': d, **by_day[d]} for d in days_sorted]}
+    return {'available': True, 'days': calendar(by_day, days)}
+
+
+def calendar(by_day, days, today=None):
+    """Exactly `days` consecutive calendar days ending today (local); missing days are empty.
+
+    The UI sums the last 1/7/30 entries, so they must be real calendar days, not the
+    last N days that happen to have data.
+    """
+    from datetime import date, timedelta
+    today = today or date.today()
+    out = []
+    for back in range(days - 1, -1, -1):
+        d = (today - timedelta(days=back)).isoformat()
+        out.append({'day': d, **by_day.get(d, {})})
+    return out
 
 
 PAGE = r'''<!doctype html><html lang="vi"><head><meta charset="utf-8">

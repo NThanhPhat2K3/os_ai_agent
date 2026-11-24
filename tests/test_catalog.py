@@ -52,3 +52,23 @@ class ReportTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class CalendarTest(unittest.TestCase):
+    """Regression for Codex review: 'today'/'7 days' must be calendar days."""
+    def load_report(self):
+        import importlib.machinery, importlib.util
+        loader = importlib.machinery.SourceFileLoader('report', str(ROOT / 'scripts/report'))
+        spec = importlib.util.spec_from_loader('report', loader)
+        mod = importlib.util.module_from_spec(spec); loader.exec_module(mod)
+        return mod
+
+    def test_idle_today_is_empty_and_old_data_falls_out(self):
+        from datetime import date
+        cal = self.load_report().calendar(
+            {'2026-01-01': {'claude': {'totalTokens': 999}}, '2026-01-09': {'codex': {'totalTokens': 5}}},
+            7, today=date(2026, 1, 10))
+        self.assertEqual(len(cal), 7)
+        self.assertEqual(cal[-1], {'day': '2026-01-10'})            # nothing used today -> empty
+        self.assertEqual(cal[-2]['codex']['totalTokens'], 5)
+        self.assertNotIn('2026-01-01', [d['day'] for d in cal])     # older than 7 days -> excluded
