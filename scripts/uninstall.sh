@@ -13,6 +13,7 @@ run() { if ((DRY)); then echo "  [dry-run] $*"; else "$@"; fi; }
 echo "== os_ai_agent uninstall$( ((DRY)) && echo ' [DRY RUN]')"
 
 REMAIN="$(mktemp)"; trap 'rm -f "$REMAIN"' EXIT
+mcp_fp() { "$1" mcp get "$2" 2>/dev/null | grep -viE '^[[:space:]]*status:' | sha256sum | cut -d' ' -f1; }
 keep() { printf '%s\n' "$1" >> "$REMAIN"; echo "  ~ kept: $2"; }
 
 while IFS= read -r line; do
@@ -36,14 +37,16 @@ if rule in lst:
     lst.remove(rule)
     if not lst: perm.pop(kind, None)          # don't leave empty lists behind
     if not perm: s.pop("permissions", None)
+    mode = os.stat(p).st_mode & 0o777          # keep original permissions
     tmp = p + ".os_ai_agent.tmp"
-    with open(tmp, "w") as f: json.dump(s, f, indent=2, ensure_ascii=False)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode); os.fchmod(fd, mode)
+    with os.fdopen(fd, "w") as f: json.dump(s, f, indent=2, ensure_ascii=False)
     os.replace(tmp, p)
 PY
         echo "  - permission $a: $b"; fi ;;
-    MCP)    # a=client b=name c=signature: remove only if still configured as we left it
+    MCP)    # a=client b=name c=fingerprint: remove only if the full config is unchanged
       if ! "$a" mcp get "$b" >/dev/null 2>&1; then echo "  · $a mcp $b already gone"
-      elif "$a" mcp get "$b" 2>/dev/null | grep -qF -- "$c"; then
+      elif [[ -n "$c" && "$(mcp_fp "$a" "$b")" == "$c" ]]; then
         if run "$a" mcp remove "$b" >/dev/null 2>&1; then echo "  - $a mcp: $b"; else keep "$line" "$a mcp remove $b failed"; fi
       else keep "$line" "$a mcp $b was reconfigured by the user"; fi ;;
     UVTOOL) # a=package

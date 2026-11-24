@@ -96,8 +96,12 @@ if added:
         os.makedirs(os.path.dirname(dst), exist_ok=True)
         shutil.copy2(settings_p, dst)
         print(f"  backup {settings_p} -> {dst}")
-    tmp = settings_p + ".os_ai_agent.tmp"         # atomic write: never leave a half-written file
-    with open(tmp, "w") as f:
+    # Atomic write that keeps the original file mode (umask-proof; default 600).
+    mode = os.stat(settings_p).st_mode & 0o777 if os.path.exists(settings_p) else 0o600
+    tmp = settings_p + ".os_ai_agent.tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    os.fchmod(fd, mode)
+    with os.fdopen(fd, "w") as f:
         json.dump(s, f, indent=2, ensure_ascii=False)
     os.replace(tmp, settings_p)
     with open(ledger, "a") as f:
@@ -108,19 +112,20 @@ PY
 fi
 
 say "-- 4. MCP servers"
-mcp_add() { # mcp_add <client> <name> <signature> <command...>
-  # <signature>: a string that `<client> mcp get <name>` must still contain for
-  # uninstall to remove it (so a server the user reconfigured is left alone).
-  local client="$1" name="$2" sig="$3"; shift 3
+# Fingerprint of a server's full config (`mcp get` minus the volatile Status line).
+# uninstall removes a server only if its fingerprint is unchanged.
+mcp_fp() { "$1" mcp get "$2" 2>/dev/null | grep -viE '^[[:space:]]*status:' | sha256sum | cut -d' ' -f1; }
+mcp_add() { # mcp_add <client> <name> <command...>
+  local client="$1" name="$2"; shift 2
   if "$client" mcp get "$name" >/dev/null 2>&1; then
     say "  = $client: $name (already configured, left untouched)"; return
   fi
   run "$@"
-  note "MCP	$client	$name	$sig"
+  ((DRY)) || note "MCP	$client	$name	$(mcp_fp "$client" "$name")"
   say "  + $client: $name"
 }
-mcp_add claude context7 "mcp.context7.com" claude mcp add --scope user --transport http context7 https://mcp.context7.com/mcp
-mcp_add codex  context7 "context7-mcp@4.6.0" codex mcp add context7 -- npx -y @upstash/context7-mcp@4.6.0
+mcp_add claude context7 claude mcp add --scope user --transport http context7 https://mcp.context7.com/mcp
+mcp_add codex  context7 codex mcp add context7 -- npx -y @upstash/context7-mcp@4.6.0
 
 need_uv() {
   command -v uv >/dev/null || { say "  ! 'uv' not found. Install it first: https://docs.astral.sh/uv/getting-started/installation/"; return 1; }
@@ -133,14 +138,14 @@ uv_install() { # only record tools this script actually installed
 }
 if ((WITH_SERENA)) && need_uv; then
   uv_install serena-agent "serena-agent==2.1.0"
-  mcp_add claude serena "start-mcp-server" claude mcp add --scope user serena -- serena start-mcp-server --context claude-code --project-from-cwd
-  mcp_add codex  serena "start-mcp-server" codex mcp add serena -- serena start-mcp-server --project-from-cwd --context=codex
+  mcp_add claude serena claude mcp add --scope user serena -- serena start-mcp-server --context claude-code --project-from-cwd
+  mcp_add codex  serena codex mcp add serena -- serena start-mcp-server --project-from-cwd --context=codex
 fi
 if ((WITH_BM)) && need_uv; then
   uv_install basic-memory "basic-memory==1.0.0"
   run mkdir -p "$HOME/agent-memory"; run chmod 700 "$HOME/agent-memory"
-  mcp_add claude basic-memory "basic-memory" claude mcp add --scope user basic-memory -e BASIC_MEMORY_HOME="$HOME/agent-memory" -- basic-memory mcp
-  mcp_add codex  basic-memory "basic-memory" codex mcp add basic-memory --env BASIC_MEMORY_HOME="$HOME/agent-memory" -- basic-memory mcp
+  mcp_add claude basic-memory claude mcp add --scope user basic-memory -e BASIC_MEMORY_HOME="$HOME/agent-memory" -- basic-memory mcp
+  mcp_add codex  basic-memory codex mcp add basic-memory --env BASIC_MEMORY_HOME="$HOME/agent-memory" -- basic-memory mcp
 fi
 
 say "== done. Restart Claude Code and Codex, then run scripts/doctor.sh"
