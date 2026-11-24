@@ -9,7 +9,10 @@ Talk to the user in Vietnamese.
 
 Follow these steps in order. Stop and ask the user whenever a step says ASK.
 
-1. **Check prerequisites** and report a table of what is present/missing:
+1. **Check OS and prerequisites** (README sections 1–3) and report a table of what is present/missing.
+   Linux/WSL2 are supported; on macOS check for GNU `tac`, `sha256sum` and bash ≥ 4 first.
+   Also check `git config user.name`/`user.email` and that `gh auth status` is logged in, because
+   pushing is required after skill changes. Commands:
    `git --version`, `python3 --version` (≥ 3.10), `claude --version`, `codex --version`,
    `node --version`, `npm --version`, `gh auth status`, `uv --version`.
    Missing `claude` or `codex` is OK (that side is skipped). Do not install system packages
@@ -30,7 +33,8 @@ Follow these steps in order. Stop and ask the user whenever a step says ASK.
 8. **Tell the user the manual steps** (README section 4): restart Claude Code and Codex;
    install the Codex plugin in Claude Code (`/plugin marketplace add openai/codex-plugin-cc`,
    `/plugin install codex@openai-codex`, `/codex:setup`); then ask Codex which skills it has.
-9. Report honestly: what was done, what was skipped and why, anything that failed (paste output).
+9. Walk through the checklist in README section 7 with the user.
+10. Report honestly: what was done, what was skipped and why, anything that failed (paste output).
 
 Never: run `scripts/install.sh` without the dry run first; edit files under `~/.claude`,
 `~/.codex` or `~/.agents` by hand (use the scripts); delete backups in `~/.local/state/os_ai_agent`;
