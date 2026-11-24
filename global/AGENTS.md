@@ -11,7 +11,7 @@ Project-level `AGENTS.md` / `CLAUDE.md` add to or override these rules.
 ## How to work
 - Read the code before changing it. Prefer small, reviewable changes over large rewrites.
 - Ground facts in sources: headers, datasheets, official docs, `--help`. Do not invent APIs, register names or CLI flags. Use Context7 for library docs when available, then confirm against the SDK version actually in the project.
-- After every code change: build, run the relevant tests / static analysis, and report the result honestly (paste failures).
+- After a code change, run the checks that fit it (build, relevant tests, static analysis) and report results honestly, pasting failures. If a check is impossible or too costly here (no toolchain, needs hardware), say exactly what was not verified.
 - For C/C++: respect the project's `compile_commands.json`, toolchain version and coding standard (e.g. MISRA). No undefined behaviour "because it works".
 - Record non-obvious decisions in the project's `docs/decisions.md` (what, why, date). Never store secrets there.
 

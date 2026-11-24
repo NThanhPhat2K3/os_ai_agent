@@ -19,6 +19,34 @@ prefix_rule(
     not_match = ["idf.py efuse-summary", "idf.py build"],
 )
 
+# Same eFuse commands when a port option comes first (prefix rules are positional,
+# so list the common forms explicitly). Anything not listed still hits the `idf.py -p`
+# PROMPT rule below, so it is never silent.
+prefix_rule(
+    pattern = ["idf.py", ["-p", "--port"],
+               ["/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyUSB2", "/dev/ttyUSB3",
+                "/dev/ttyACM0", "/dev/ttyACM1", "/dev/ttyACM2", "/dev/ttyACM3"],
+               ["efuse-burn", "efuse-burn-key", "efuse-write-protect", "efuse-read-protect", "efuse-burn-custom-mac"]],
+    decision = "forbidden",
+    justification = "eFuse writes are irreversible. Ask the user to burn manually.",
+    match = ["idf.py -p /dev/ttyUSB0 efuse-burn", "idf.py --port /dev/ttyACM0 efuse-burn-key BLOCK_KEY0 k.bin"],
+    not_match = ["idf.py -p /dev/ttyUSB0 flash"],
+)
+
+prefix_rule(
+    pattern = [["python", "python3"], "-m", ["espefuse", "espefuse.py"]],
+    decision = "forbidden",
+    justification = "eFuse tool via python -m. Ask the user to run it manually.",
+    match = ["python -m espefuse burn_efuse X", "python3 -m espefuse summary"],
+)
+
+prefix_rule(
+    pattern = [["python", "python3"], "-m", "esptool"],
+    decision = "prompt",
+    justification = "esptool via python -m can modify a connected device. Ask the user first.",
+    match = ["python3 -m esptool write_flash 0x0 fw.bin"],
+)
+
 # ---- PROMPT: anything that talks to a real board ----
 prefix_rule(
     pattern = ["idf.py", ["flash", "app-flash", "bootloader-flash", "partition-table-flash", "erase-flash", "erase-otadata", "monitor", "-p", "--port"]],

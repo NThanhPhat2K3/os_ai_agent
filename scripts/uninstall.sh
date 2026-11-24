@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Undo exactly what scripts/install.sh recorded in its ledger (newest first).
+# Anything that changed since install is left alone and KEPT in the ledger,
+# so nothing is silently forgotten. Exit code 1 if something was left.
 # Usage: scripts/uninstall.sh [--dry-run]
 set -euo pipefail
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/os_ai_agent"
@@ -10,30 +12,52 @@ run() { if ((DRY)); then echo "  [dry-run] $*"; else "$@"; fi; }
 [[ -f "$LEDGER" ]] || { echo "Nothing to undo (no ledger at $LEDGER)."; exit 0; }
 echo "== os_ai_agent uninstall$( ((DRY)) && echo ' [DRY RUN]')"
 
-tac "$LEDGER" | while IFS=$'\t' read -r kind a b c; do
+REMAIN="$(mktemp)"; trap 'rm -f "$REMAIN"' EXIT
+keep() { printf '%s\n' "$1" >> "$REMAIN"; echo "  ~ kept: $2"; }
+
+while IFS= read -r line; do
+  IFS=$'\t' read -r kind a b c <<< "$line"
   case "$kind" in
     LINK)   # a=target b=source: remove only if it is still our link
-      if [[ -L "$a" && "$(readlink "$a")" == "$b" ]]; then run rm "$a"; echo "  - $a"; else echo "  ~ $a changed since install, left alone"; fi ;;
-    BACKUP) # a=original path b=backup path: restore if the slot is free
-      if [[ -e "$b" && ! -e "$a" && ! -L "$a" ]]; then run mkdir -p "$(dirname "$a")"; run mv "$b" "$a"; echo "  ↺ restored $a"; fi ;;
-    PERM)   # a=kind b=rule
+      if [[ -L "$a" && "$(readlink "$a")" == "$b" ]]; then run rm "$a"; echo "  - $a"
+      elif [[ ! -e "$a" && ! -L "$a" ]]; then echo "  · $a already gone"
+      else keep "$line" "$a changed since install"; fi ;;
+    BACKUP) # a=original path b=backup path: restore only into a free slot
+      if [[ ! -e "$b" ]]; then keep "$line" "backup $b missing"
+      elif [[ -e "$a" || -L "$a" ]]; then keep "$line" "$a is occupied; backup stays at $b"
+      else run mkdir -p "$(dirname "$a")"; run mv "$b" "$a"; echo "  ↺ restored $a"; fi ;;
+    PERM)   # a=kind b=rule: remove only the rule we added, keep user edits
       if ((DRY)); then echo "  [dry-run] remove permission $a: $b"; else
         python3 - "$HOME/.claude/settings.json" "$a" "$b" <<'PY'
-import json, sys
+import json, os, sys
 p, kind, rule = sys.argv[1:4]
 s = json.load(open(p)); perm = s.get("permissions", {}); lst = perm.get(kind, [])
 if rule in lst:
     lst.remove(rule)
     if not lst: perm.pop(kind, None)          # don't leave empty lists behind
     if not perm: s.pop("permissions", None)
-    json.dump(s, open(p, "w"), indent=2, ensure_ascii=False)
+    tmp = p + ".os_ai_agent.tmp"
+    with open(tmp, "w") as f: json.dump(s, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, p)
 PY
         echo "  - permission $a: $b"; fi ;;
-    MCP)    # a=client b=name
-      run "$a" mcp remove "$b" >/dev/null 2>&1 || true; echo "  - $a mcp: $b" ;;
+    MCP)    # a=client b=name c=signature: remove only if still configured as we left it
+      if ! "$a" mcp get "$b" >/dev/null 2>&1; then echo "  · $a mcp $b already gone"
+      elif "$a" mcp get "$b" 2>/dev/null | grep -qF -- "$c"; then
+        if run "$a" mcp remove "$b" >/dev/null 2>&1; then echo "  - $a mcp: $b"; else keep "$line" "$a mcp remove $b failed"; fi
+      else keep "$line" "$a mcp $b was reconfigured by the user"; fi ;;
     UVTOOL) # a=package
-      run uv tool uninstall "$a" >/dev/null 2>&1 || true; echo "  - uv tool: $a" ;;
+      if run uv tool uninstall "$a" >/dev/null 2>&1; then echo "  - uv tool: $a"; else keep "$line" "uv tool uninstall $a failed"; fi ;;
+    "") ;;
+    *) keep "$line" "unknown ledger entry" ;;
   esac
-done
-((DRY)) || mv "$LEDGER" "$LEDGER.undone-$(date +%Y%m%d-%H%M%S)"
+done < <(tac "$LEDGER")
+
+if ((DRY)); then echo "== dry run, nothing changed"; exit 0; fi
+mv "$LEDGER" "$LEDGER.undone-$(date +%Y%m%d-%H%M%S)"
+if [[ -s "$REMAIN" ]]; then
+  tac "$REMAIN" > "$LEDGER"   # back to install order
+  echo "== partially done: $(wc -l < "$LEDGER") item(s) left in $LEDGER (fix them, then rerun)"
+  exit 1
+fi
 echo "== done (backups kept under $STATE_DIR/backups)"

@@ -30,6 +30,9 @@ R="$HUB/safety/codex/embedded-safety.rules"
 expect() { local want="$1"; shift; got="$(codex execpolicy check --rules "$R" -- "$@" 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin).get("decision","allow-default"))' 2>/dev/null)"; [[ "$got" == "$want" ]] && pass "codex: '$*' → $got" || fail "codex: '$*' → $got (want $want)"; }
 expect forbidden espefuse.py burn_efuse X
 expect forbidden idf.py efuse-burn
+expect forbidden idf.py -p /dev/ttyUSB0 efuse-burn
+expect forbidden python3 -m espefuse burn_efuse X
+expect prompt idf.py -p /dev/ttyS9 efuse-burn
 expect prompt idf.py -p /dev/ttyUSB0 flash
 expect prompt openocd -f board.cfg
 expect allow-default idf.py build
