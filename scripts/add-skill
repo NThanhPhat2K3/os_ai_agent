@@ -152,6 +152,15 @@ def add(args):
         if args.dry_run:
             print('[dry-run] stopping before any change.')
             return
+        # Refuse if anything already lives at the target: rollback may only ever delete what
+        # THIS run created, never pre-existing user files.
+        for existing in (ROOT / path, ROOT / '.git' / 'modules' / path):
+            if existing.exists() or existing.is_symlink():
+                sys.exit(f'{existing.relative_to(ROOT)} already exists; move it away first. Nothing was changed.')
+        has_entry = subprocess.run(['git', '-C', str(ROOT), 'config', '-f', '.gitmodules', '--get',
+                                    f'submodule.{path}.path'], capture_output=True).returncode == 0
+        if has_entry:
+            sys.exit(f'.gitmodules already has an entry for {path}. Nothing was changed.')
         created_vendor = path     # from here on, any failure must undo the submodule
         try:
             git('submodule', 'add', f'https://github.com/{args.repo}', path)
