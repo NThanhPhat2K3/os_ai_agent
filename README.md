@@ -157,7 +157,7 @@ Ledger và backup nằm ở `~/.local/state/os_ai_agent/`. Mục nào bạn đã
 | **Anthropic** `mcp-builder` (anthropics/skills, Apache-2.0) | Bật | Viết MCP server chất lượng (Python/TypeScript) |
 | **Embedded** `lvgl-hmi-production` | Bật (tự viết, chuyển từ `02.skill/lgvl_skills`) | Thiết kế + triển khai giao diện LVGL cho màn hình embedded, Zephyr |
 | **Embedded** `arm-cortex-expert`, `c-pro` | Bật (lớp bọc) | Firmware Cortex-M (STM32, nRF52, SAMD); C an toàn bộ nhớ. Nội dung lấy từ subagent của `wshobson/agents` (MIT, pin), qua `upstream.md` |
-| **UI/UX** `ui-ux-pro-max` (nextlevelbuilder, MIT, 154k★) | Bật | Kho phong cách, bảng màu, font, hướng dẫn UX, tìm kiếm cục bộ |
+| **UI/UX** `ui-ux-pro-max` (nextlevelbuilder, MIT, 154k★) | Bật (lớp bọc) | Kho phong cách, bảng màu, font, hướng dẫn UX, tìm kiếm cục bộ. Chạy qua `search.sh` của lớp bọc vì lệnh gốc cần `CLAUDE_PLUGIN_ROOT` |
 | **UI/UX** `frontend-design` (Anthropic) | Bật | Định hướng thẩm mỹ cho UI web, tránh giao diện "mặc định" |
 | **UI/UX** `enhance-prompt` (Google Stitch, Apache-2.0) | **Chỉ Claude** | Biến ý tưởng UI mơ hồ thành prompt tốt cho Stitch. Codex đã có bộ Stitch qua plugin |
 
@@ -167,7 +167,8 @@ Chờ đủ 14 ngày: `embedded-gui-production` của Stitch (Claude). `generate
 (`stitch::generate-design`) không khớp thư mục.
 
 **Lớp bọc (wrapper):** skill cục bộ trong `skills/<tên>/` có `SKILL.md` ngắn và `upstream.md` là symlink tới file đã pin trong
-`vendor/`; khai báo `upstream` trong `skills.json` để `check-updates` theo dõi bản mới.
+`vendor/` (hoặc `upstream/` trỏ tới cả thư mục skill gốc, với `"link": "upstream"`); khai báo `upstream` trong
+`skills.json` để `check-updates` theo dõi bản mới và `doctor` kiểm tra link trỏ đúng file đã pin.
 
 Trường `agents` trong `skills.json` chọn skill dành cho agent nào: `ask-claude` chỉ cho Codex, `ask-codex-live` chỉ cho
 Claude. Skill có `notes` (cảnh báo đã biết) được hiển thị màu cam trong Agent Hub.

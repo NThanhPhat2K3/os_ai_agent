@@ -24,7 +24,8 @@ while IFS= read -r line; do
   IFS=$'\t' read -r kind a b c <<< "$line"
   case "$kind" in
     LINK)   # a=target b=source: remove only if it is still our link
-      if [[ -L "$a" && "$(readlink "$a")" == "$b" ]]; then run rm "$a"; GONE[$a]=1; echo "  - $a"
+      if [[ -n "${GONE[$a]:-}" ]]; then echo "  · $a already gone"
+      elif [[ -L "$a" && "$(readlink "$a")" == "$b" ]]; then run rm "$a"; GONE[$a]=1; echo "  - $a"
       elif [[ ! -e "$a" && ! -L "$a" ]]; then echo "  · $a already gone"
       else keep "$line" "$a changed since install"; fi ;;
     BACKUP) # a=original path b=backup path: restore only into a free slot

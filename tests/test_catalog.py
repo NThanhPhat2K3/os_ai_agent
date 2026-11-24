@@ -121,10 +121,10 @@ class UpstreamTest(unittest.TestCase):
         data = load()
         for s in data['skills']:
             if 'upstream' in s:
-                link = ROOT / 'skills' / s['name'] / 'upstream.md'
-                vendor = data['vendors'][s['upstream']['vendor']]
+                from tools.skill_hub.catalog import upstream_link
+                link, target = upstream_link(data, s)
                 self.assertTrue(link.is_symlink(), s['name'])
-                self.assertEqual(link.resolve(), (ROOT / vendor['path'] / s['upstream']['file']).resolve())
+                self.assertEqual(link.resolve(), target.resolve())
 
     def test_bad_upstream_rejected(self):
         from tools.skill_hub.catalog import load

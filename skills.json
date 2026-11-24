@@ -140,11 +140,6 @@
       ]
     },
     {
-      "name": "ui-ux-pro-max",
-      "source": "vendor",
-      "vendor": "nextlevelbuilder-ui-ux-pro-max-skill"
-    },
-    {
       "name": "frontend-design",
       "source": "vendor",
       "vendor": "anthropics-skills"
@@ -169,6 +164,16 @@
         "vendor": "wshobson-agents",
         "file": "plugins/systems-programming/agents/c-pro.md"
       }
+    },
+    {
+      "name": "ui-ux-pro-max",
+      "source": "local",
+      "upstream": {
+        "vendor": "nextlevelbuilder-ui-ux-pro-max-skill",
+        "file": ".claude/skills/ui-ux-pro-max/SKILL.md",
+        "link": "upstream"
+      },
+      "notes": "Wrapper: upstream commands use ${CLAUDE_PLUGIN_ROOT}, which is unset outside a plugin; use this skill's search.sh instead."
     }
   ]
 }

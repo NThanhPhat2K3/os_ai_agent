@@ -37,12 +37,18 @@ backup() { # move an existing path out of the way, remember where it went
   note "BACKUP	$target	$dest"
 }
 
+owned() { [[ -f "$LEDGER" ]] && grep -qxF "LINK	$1	$(readlink "$1")" "$LEDGER"; }
+
 link() { # link <source> <target>
   local src="$1" dst="$2"
   if [[ -L "$dst" && "$(readlink -f "$dst")" == "$(readlink -f "$src")" ]]; then
     say "  = $dst (already linked)"; return
   fi
-  if [[ -e "$dst" || -L "$dst" ]]; then backup "$dst"; fi
+  if [[ -L "$dst" && "$(readlink "$dst")" == "$HUB/"* ]] && owned "$dst"; then
+    run rm -- "$dst"          # our own older link (e.g. skill moved to a wrapper): replace, no backup
+  elif [[ -e "$dst" || -L "$dst" ]]; then
+    backup "$dst"
+  fi
   run mkdir -p "$(dirname "$dst")"
   run ln -s "$src" "$dst"
   note "LINK	$dst	$src"
@@ -75,7 +81,6 @@ done <<< "$catalog"
 # Prune links that skills.json no longer assigns to that agent (a skill retargeted from both
 # agents to one, or removed from the catalog). Only links the LEDGER proves this installer
 # created are touched; a symlink the user made by hand is never removed.
-owned() { [[ -f "$LEDGER" ]] && grep -qxF "LINK	$1	$(readlink "$1")" "$LEDGER"; }
 for pair in "claude:$HOME/.claude/skills" "codex:$HOME/.agents/skills"; do
   agent="${pair%%:*}"; root="${pair#*:}"
   for l in "$root"/*; do

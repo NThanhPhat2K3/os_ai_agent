@@ -27,13 +27,17 @@ if catalog="$(python3 "$HUB/tools/skill_hub/catalog.py" "$HUB")"; then pass "ski
 while IFS=$'\t' read -r n d agents; do
   [[ -n "$n" ]] || continue
   [[ -f "$d/SKILL.md" ]] || fail "$n: SKILL.md missing at $d"
-  [[ -L "$d/upstream.md" && ! -e "$d/upstream.md" ]] && fail "$n: upstream.md is a broken link (git submodule update --init?)"
   [[ ",$agents," == *",claude,"* ]] && chk_link "$d" "$HOME/.claude/skills/$n"
   if [[ ",$agents," == *",codex,"* ]]; then
     chk_link "$d" "$HOME/.agents/skills/$n"
     [[ -e "$HOME/.codex/skills/$n" && ! -L "$HOME/.codex/skills/$n" ]] && fail "duplicate skill in ~/.codex/skills/$n"
   fi
 done <<< "$catalog"
+if err="$(python3 "$HUB/tools/skill_hub/catalog.py" "$HUB" --check-upstream 2>&1 >/dev/null)"; then
+  pass "wrapper skills: upstream links point at the pinned catalog files"
+else
+  fail "$err (git submodule update --init?)"
+fi
 # Stale links: point into this hub but the skill is not (or no longer) meant for that agent.
 for pair in "claude:$HOME/.claude/skills" "codex:$HOME/.agents/skills"; do
   agent="${pair%%:*}"; root="${pair#*:}"

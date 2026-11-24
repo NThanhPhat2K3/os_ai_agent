@@ -14,4 +14,5 @@ Rules that take precedence over upstream.md:
 - Ignore upstream frontmatter fields such as `model`; they do not apply here.
 - Code samples are illustrative: check ISRs, critical sections, DMA and clock setup against the
   datasheet/reference manual and the project's existing patterns before reuse.
-- Never flash, erase or write option bytes/fuses without the user's explicit approval.
+- Never flash or erase a board without the user's explicit approval. Never write fuses, option
+  bytes or lock bits at all: give the user the exact command instead (global rule).
