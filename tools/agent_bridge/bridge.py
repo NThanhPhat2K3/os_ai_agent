@@ -373,6 +373,7 @@ def screen_tail(name, n=8):
 
 def wait_turn(locate, turn, name, timeout, hint_after=20):
     """Tail the transcript found by locate() until `turn` is done, the CLI exits, or timeout."""
+    turn.timed_out = False
     start = time.time()
     deadline, path, pos, buf, hinted = start + timeout, None, 0, '', False
     while time.time() < deadline:
@@ -397,8 +398,8 @@ def wait_turn(locate, turn, name, timeout, hint_after=20):
             turn.error = turn.error or 'the peer CLI exited before answering'
             return turn
         time.sleep(POLL)
-    turn.error = (f'no answer within {timeout}s (the CLI is still open; the answer will appear there). '
-                  f'Screen:\n{screen_tail(name)}')
+    turn.timed_out = True
+    turn.error = f'no answer within {timeout}s' + ('' if turn.seen else f'; screen:\n{screen_tail(name)}')
     return turn
 
 
@@ -418,10 +419,9 @@ def peer_ready(to, peer_id, pair):
     if not path:
         return False
     last_nonce = pair.get('last_nonce')
-    if last_nonce == 'opened':
-        if path.stat().st_size <= int(pair.get('opened_size') or 0):
-            return False
-    elif not (last_nonce and last_nonce in path.read_text(errors='replace')):
+    took_ours = bool(last_nonce) and last_nonce in path.read_text(errors='replace')
+    used_since_open = pair.get('opened_size') is not None and path.stat().st_size > int(pair['opened_size'])
+    if not (took_ours or used_since_open):
         return False
     return codex_idle(path) if to == 'codex' else claude_idle(path)
 
@@ -481,47 +481,85 @@ def cmd_ask(a):
         new_id = str(uuid.uuid4())
         title = title_for(caller, sid, to, peer_id or (new_id if to == 'claude' else None))
         started = time.time()
-        if alive:
-            tmux_paste(name, tagged)
-            how = 'sent to the open CLI'
-        else:
-            tmux_start(name, cwd, peer_argv(to, peer_id, new_id, cwd, a.write, tagged), title)
-            how = f'reopened {to} session' if peer_id else f'started a new {to} session'
-            if peer_id:
-                record(mode=mode)
-            elif to == 'codex':
-                record(peer_id=None, pending_nonce=nonce, mode=mode)
+        # Persist what we are about to send BEFORE sending, so `wait` can always find it, even if this
+        # process is killed right after the paste. Roll back if sending fails.
+        before = {k: pair.get(k) for k in ('last_nonce', 'asked', 'pending_nonce', 'pending_id', 'mode', 'opened_size')}
+        pending = {} if peer_id else ({'pending_nonce': nonce} if to == 'codex' else {'pending_id': new_id})
+        record(last_nonce=nonce, asked=now(), opened_size=None,
+               **({} if alive else {'mode': mode}), **pending)
+        try:
+            if alive:
+                tmux_paste(name, tagged)
+                how = 'sent to the open CLI'
             else:
-                record(peer_id=None, pending_id=new_id, mode=mode)
-        if pair.get('peer_id') or to == 'codex':
-            record(last_nonce=nonce)
+                tmux_start(name, cwd, peer_argv(to, peer_id, new_id, cwd, a.write, tagged), title)
+                how = f'reopened {to} session' if peer_id else f'started a new {to} session'
+        except BaseException:
+            record(**before)
+            raise
         window = open_window(name, title)
+        print(f'[bridge] {caller} {sid} → {to} {peer_id or "(new)"} ({how}; {window})', file=sys.stderr, flush=True)
+        peer_id, turn = collect(d, key, name, to, nonce, started, a.wait)
+    return finish(to, turn)
 
-        if to == 'codex':
-            if not peer_id:                     # learn the new thread id from its rollout
-                while time.time() < started + a.timeout and tmux_alive(name):
-                    peer_id = find_new_codex_thread(nonce, started, cwd)
-                    if peer_id:
-                        break
-                    time.sleep(POLL)
-                if not peer_id:
-                    raise BridgeError(f'Codex has not started its session (answer any prompt in its window; the next '
-                                      f'ask picks it up), or it exited. Screen:\n{screen_tail(name)}', 4)
-                record(peer_id=peer_id, pending_nonce=None, mode=mode)
-            turn = wait_turn(lambda: codex_transcript(peer_id), CodexTurn(nonce), name, a.timeout)
+
+EX_STILL_RUNNING = 75   # EX_TEMPFAIL: the peer is still working; call `wait`
+
+
+def collect(d, key, name, to, nonce, started, budget):
+    """Wait (up to `budget` s) for the answer to the ask tagged `nonce`. Safe to call again after a cut-off."""
+    deadline = started + budget
+    pair = get_pair(d, key)
+    peer_id = pair.get('peer_id')
+    while not peer_id:                    # first ask: learn the new session id
+        if to == 'codex' and pair.get('pending_nonce'):
+            peer_id = find_new_codex_thread(pair['pending_nonce'], 0, pair.get('cwd'))
+        elif to == 'claude' and pair.get('pending_id') and claude_transcript(pair['pending_id']):
+            peer_id = pair['pending_id']
+        if peer_id:
+            update_pair(d, key, peer_id=peer_id, pending_nonce=None, pending_id=None)
+            break
+        if not tmux_alive(name):
+            t = ClaudeTurn(nonce) if to == 'claude' else CodexTurn(nonce)
+            t.timed_out, t.error = False, f'the {to} CLI exited before starting its session'
+            return None, t
+        if time.time() >= deadline:
+            t = ClaudeTurn(nonce) if to == 'claude' else CodexTurn(nonce)
+            t.timed_out, t.error = True, f'{to} has not started its session yet; screen:\n{screen_tail(name)}'
+            return None, t
+        time.sleep(POLL)
+    locate = (lambda: codex_transcript(peer_id)) if to == 'codex' else (lambda: claude_transcript(peer_id))
+    turn = wait_turn(locate, CodexTurn(nonce) if to == 'codex' else ClaudeTurn(nonce), name,
+                     max(1, deadline - time.time()))
+    update_pair(d, key, last=now())
+    return peer_id, turn
+
+
+def finish(to, turn):
+    if turn.answer is not None:
+        print(turn.answer)
+        return 0
+    if turn.timed_out:
+        if not turn.seen:
+            print(f'agent-bridge: {to} has NOT taken the message yet. It may be waiting for the USER in its window '
+                  f'(trust/login/update prompt): tell the user what the screen shows. Then run `bridge wait --to {to}`.'
+                  f'\n{turn.error}', file=sys.stderr)
         else:
-            peer_id = peer_id or new_id
-            turn = wait_turn(lambda: claude_transcript(peer_id), ClaudeTurn(nonce), name, a.timeout)
-            if turn.seen or claude_transcript(peer_id):   # only record a session that really exists
-                record(peer_id=peer_id, pending_id=None, mode=mode, last_nonce=nonce)
-        if pair.get('peer_id'):
-            record()
+            print(f'agent-bridge: {to} is still working ({turn.error}). The answer is not lost: '
+                  f'run `bridge wait --to {to}` to keep waiting.', file=sys.stderr)
+        return EX_STILL_RUNNING
+    raise BridgeError(f'{to} did not return an answer: {turn.error}', 4)
 
-    print(f'[bridge] {caller} {sid} → {to} {peer_id} ({how}; {window})', file=sys.stderr)
-    if turn.answer is None:
-        raise BridgeError(f'{to} did not return an answer: {turn.error}', 4)
-    print(turn.answer)
-    return 0
+
+def cmd_wait(a):
+    caller, sid = caller_identity(a.to, a.caller_session)
+    d, key, name = state_dir(), pair_key(caller, sid, a.to), tmux_name(caller, sid, a.to)
+    with locked(d / f'{caller}-{sid}-to-{a.to}.lock', blocking=False):
+        nonce = get_pair(d, key).get('last_nonce')
+        if not nonce:
+            raise BridgeError('nothing to wait for: no ask has been sent in this pair', 2)
+        _, turn = collect(d, key, name, a.to, nonce, time.time(), a.wait)
+    return finish(a.to, turn)
 
 
 def cmd_status(a):
@@ -555,7 +593,7 @@ def cmd_open(a):
             tmux_start(name, pair['cwd'], peer_argv(a.to, pair['peer_id'], None, pair['cwd'], False, None), title)
             path = transcript_of(a.to, pair['peer_id'])
             # asks may paste only once the transcript grows (the user got past any startup dialog and used it)
-            update_pair(d, key, mode='read', last_nonce='opened', opened_size=path.stat().st_size if path else 0)
+            update_pair(d, key, mode='read', opened_size=path.stat().st_size if path else 0)
         print(open_window(name, title, force=True))
     return 0
 
@@ -570,9 +608,15 @@ def main(argv=None):
                    help='allow the peer to edit files (default: read-only); applies when the CLI is (re)started')
     p.add_argument('--new', action='store_true', help='start a fresh peer session for this caller session')
     p.add_argument('--cwd', default='.', help='working directory for a NEW pair (default: current)')
-    p.add_argument('--timeout', type=int, default=1800, help='seconds to wait for the answer (default 1800)')
+    p.add_argument('--wait', '--timeout', dest='wait', type=int, default=1800,
+                   help='seconds to wait for the answer (default 1800); on expiry exit 75 and continue with `wait`')
     p.add_argument('--caller-session', help='override the caller session id (default: from environment)')
     p.set_defaults(fn=cmd_ask)
+    p = sub.add_parser('wait', help='keep waiting for the answer to the last ask of this pair (after exit 75 or a cut-off)')
+    p.add_argument('--to', choices=PEERS, required=True)
+    p.add_argument('--wait', '--timeout', dest='wait', type=int, default=1800)
+    p.add_argument('--caller-session')
+    p.set_defaults(fn=cmd_wait)
     p = sub.add_parser('status', help='show the peer session paired with this caller session')
     p.add_argument('--all', action='store_true')
     p.add_argument('--json', action='store_true')

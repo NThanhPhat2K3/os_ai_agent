@@ -22,6 +22,7 @@ Do not use `codex exec`, `codex queue` or `/codex:rescue` for this skill: they c
 EOF
 ```
 - Run it with the Bash tool's `run_in_background: true` (Codex can take minutes); you are notified when it ends. Do not poll.
+- If it was not run in the background and got cut off by the Bash timeout, or it exits **75** (still working, after `--wait` seconds), nothing is lost: run `~/.claude/skills/ask-codex-live/bridge wait --to codex` (in the background) to collect the answer. Do not re-send the question. If the message says Codex **has NOT taken the message yet**, show the user the screen excerpt (likely a trust/login prompt) before waiting again.
 - stdout = Codex's final answer only. stderr has a `[bridge] …` line with both session ids and how Codex was shown.
 - Codex does not see this conversation, but it remembers earlier asks in the same pair. Name files, diff ranges and exact questions; ask for a bounded answer (language, bullets, word limit).
 - Default mode: Codex sandbox `read-only` with approvals `on-request` (Codex asks the user in its pane before anything outside the sandbox). `--write` (only when the user explicitly wants Codex to edit) uses `workspace-write`. Switching mode restarts the idle CLI on the same session.
@@ -36,7 +37,8 @@ EOF
 ## 3. Errors
 - A `[bridge] … has not taken the message yet` line with a screen excerpt: Codex is waiting for the user (e.g. first-time "Trust this folder?", login). Tell the user to answer it in that pane/window; never answer trust or login prompts yourself.
 - Exit 3: another ask for this pair is running, or the Codex CLI is busy / waiting for the user (the bridge never pastes into a busy CLI or a dialog). Tell the user what the screen excerpt shows; retry once it is idle.
-- Exit 4: no answer (CLI exited, turn interrupted, or timeout). Show the stderr to the user; do not invent an answer. On timeout the CLI stays open and the answer will appear there.
+- Exit 75: still working (see above); keep calling `bridge wait`.
+- Exit 4: no answer (CLI exited or turn interrupted). Show the stderr to the user; do not invent an answer.
 
 ## 4. Report
 Show the user what you asked, Codex's answer (verbatim or near-verbatim), then your assessment (agree / disagree / changed plan). At most two round-trips per task. Never copy Codex's rollout into git, memory or other services.

@@ -57,6 +57,8 @@ FAKE_CODEX = FAKE_COMMON + textwrap.dedent('''\
         w({'type': 'event_msg', 'payload': {'type': 'user_message', 'message': m}})
         if 'HANG' in m:
             return
+        if 'SLOW' in m:
+            import time; time.sleep(4)
         w({'type': 'event_msg', 'payload': {'type': 'task_complete', 'turn_id': turn, 'last_agent_message': 'codex says: ' + first(m)}})
     if prompt: answer(prompt[0])
     loop(answer)
@@ -170,7 +172,7 @@ class BridgeTmuxTest(unittest.TestCase):
         r = self.ask('claude', 'a', CODEX_THREAD_ID='codex-cccc3333', FAKE_FAIL='1')
         self.assertEqual(r.returncode, 4)
         pair = self.pairs()['codex:codex-cccc3333->claude']
-        self.assertIsNone(pair['peer_id'])           # only a pending id, never a recorded ghost session
+        self.assertIsNone(pair.get('peer_id'))       # only a pending id, never a recorded ghost session
         self.assertTrue(pair['pending_id'])
 
     def test_requires_caller_session_and_refuses_nesting(self):
@@ -185,11 +187,42 @@ class BridgeTmuxTest(unittest.TestCase):
     def test_busy_cli_is_not_pasted_into(self):
         C = dict(CLAUDE_CODE_SESSION_ID='claude-aaaa1111')
         r = self.ask('codex', 'HANG forever', '--timeout', '2', **C)
-        self.assertEqual(r.returncode, 4)
+        self.assertEqual(r.returncode, 75)
         r = self.ask('codex', 'next', **C)
         self.assertEqual(r.returncode, 3)
         self.assertIn('busy', r.stderr)
         self.assertEqual(len(self.launches()), 1)
+
+    def test_short_wait_then_wait_command_gets_the_answer(self):
+        C = dict(CLAUDE_CODE_SESSION_ID='claude-aaaa1111')
+        self.ask('codex', 'warm up', **C)
+        r = self.ask('codex', 'SLOW job', '--wait', '1', **C)        # caller's tool would cut us off here
+        self.assertEqual(r.returncode, 75, r.stderr)
+        self.assertIn('bridge wait --to codex', r.stderr)
+        w = subprocess.run([sys.executable, str(BRIDGE), 'wait', '--to', 'codex', '--wait', '20'], cwd=self.work,
+                           capture_output=True, text=True, env=dict(self.env, **C))
+        self.assertEqual((w.returncode, w.stdout.strip()), (0, 'codex says: SLOW job'), w.stderr)
+
+    def test_bridge_killed_mid_wait_loses_nothing(self):
+        C = dict(CLAUDE_CODE_SESSION_ID='claude-aaaa1111')
+        self.ask('codex', 'warm up', **C)
+        proc = subprocess.Popen([sys.executable, str(BRIDGE), 'ask', '--to', 'codex', '-m', 'SLOW killed'], cwd=self.work,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=dict(self.env, **C))
+        time.sleep(1.5)
+        proc.terminate()                                          # e.g. the caller's tool timeout
+        proc.communicate()
+        w = subprocess.run([sys.executable, str(BRIDGE), 'wait', '--to', 'codex', '--wait', '20'], cwd=self.work,
+                           capture_output=True, text=True, env=dict(self.env, **C))
+        self.assertEqual((w.returncode, w.stdout.strip()), (0, 'codex says: SLOW killed'), w.stderr)
+
+    def test_first_claude_ask_cut_off_is_recovered_by_wait(self):
+        X = dict(CODEX_THREAD_ID='codex-cccc3333')
+        r = self.ask('claude', 'hello', '--wait', '0', **X)
+        self.assertIn(r.returncode, (0, 75), r.stderr)
+        w = subprocess.run([sys.executable, str(BRIDGE), 'wait', '--to', 'claude', '--wait', '20'], cwd=self.work,
+                           capture_output=True, text=True, env=dict(self.env, **X))
+        self.assertEqual((w.returncode, w.stdout.strip()), (0, 'claude says: hello'), w.stderr)
+        self.assertTrue(self.pairs()['codex:codex-cccc3333->claude']['peer_id'])
 
     def test_mode_change_restarts_idle_cli(self):
         C = dict(CLAUDE_CODE_SESSION_ID='claude-aaaa1111')

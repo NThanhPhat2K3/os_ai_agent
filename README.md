@@ -190,6 +190,9 @@ Skill `ask-codex-live` (trong Claude) và `ask-claude` (trong Codex) đều gọ
   - hỏi từ **VS Code** (extension Codex, terminal VS Code) hoặc terminal khác → mở **cửa sổ Terminator mới**.
   Tiêu đề và thanh trạng thái ghi cặp ID để biết đúng session. CLI còn mở thì câu hỏi được dán vào; đã đóng thì mở lại.
 - Câu hỏi có đuôi `⟦bridge xxxx⟧` để bridge lấy đúng câu trả lời, không lẫn với câu bạn tự gõ.
+- **Không mất câu trả lời vì timeout.** Agent hỏi theo từng đợt ngắn (`ask --wait 25`); bên kia chưa xong thì bridge trả mã
+  75 ("đang làm") và agent gọi tiếp `agent-bridge wait --to codex|claude`. Lệnh của agent có bị cắt giữa chừng thì
+  `wait` vẫn lấy lại được câu trả lời. (Trước đây Codex chỉ chờ một lệnh ~10–30 s rồi hay bỏ cuộc, báo timeout.)
 - Mặc định **không sửa file**: Codex `-s read-only` (muốn làm gì ngoài sandbox phải hỏi bạn trong pane), Claude bị cấm Edit/Write
   (lệnh khác phải hỏi bạn). Chỉ cho sửa khi bạn yêu cầu (`--write`). Bên được hỏi không được hỏi ngược lại qua bridge.
 - Bridge **không dán** vào CLI đang bận hoặc đang hiện hộp thoại (Trust, cập nhật, xin quyền): nó báo lại kèm ảnh màn hình chữ.

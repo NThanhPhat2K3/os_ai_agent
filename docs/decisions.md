@@ -23,3 +23,11 @@
   environment explicitly (would expose values in process arguments; the peer is the user's own CLI anyway).
   Known residual risk: if the user is typing in the peer CLI's input box at the moment of a paste, the texts mix
   (a TUI's input box state is not observable); documented in README.
+
+## 2026-11-28 — Bridge: resumable waits instead of one long blocking call
+- **What:** `ask --wait N` returns exit 75 (EX_TEMPFAIL) when the peer is still working; `agent-bridge wait --to X`
+  resumes waiting for the last ask (`last_nonce` in pairs.json). A killed bridge loses nothing: the answer stays in
+  the peer transcript and `wait` reads it.
+- **Why:** "timeouts" came from the callers, not the peer: Codex's `exec_command` yields after ~10–30 s and the
+  model often gives up instead of polling; Claude's Bash tool cuts foreground commands at 2–10 min. Short slices fit
+  both.
