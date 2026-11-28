@@ -174,38 +174,100 @@ def tmux_paste(name, text):
     tmux('send-keys', '-t', f'={name}:', 'Enter')
 
 
-def under_shared_daemon():
-    """True when this command runs inside Codex's shared app-server daemon: its environment (TERMINATOR_UUID
-    included) belongs to whichever CLI started the daemon, not to the caller's terminal."""
-    pid = os.getppid()
+TERM_VARS = ('TERMINATOR_UUID', 'TERMINATOR_DBUS_NAME', 'TERMINATOR_DBUS_PATH')
+
+
+def _cmdline(pid):
+    try:
+        return [a.decode(errors='replace') for a in Path(f'/proc/{pid}/cmdline').read_bytes().split(b'\0') if a]
+    except OSError:
+        return []
+
+
+def _environ(pid):
+    try:
+        raw = Path(f'/proc/{pid}/environ').read_bytes()
+    except OSError:
+        return {}
+    return dict(kv.decode(errors='replace').split('=', 1) for kv in raw.split(b'\0') if b'=' in kv)
+
+
+def _ancestors():
+    pid, out = os.getppid(), []
     for _ in range(30):
         if pid <= 1:
-            return False
+            break
+        out.append(_cmdline(pid))
         try:
-            if b'app-server' in Path(f'/proc/{pid}/cmdline').read_bytes():
-                return True
             pid = int(Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[1])
         except (OSError, ValueError, IndexError):
-            return False
-    return False
+            break
+    return out
+
+
+def codex_tui_terminal(thread_id, cwd):
+    """Terminal vars of the interactive Codex CLI showing `thread_id`.
+
+    The CLI runs tool commands in a shared app-server daemon, so our own environment says nothing about the
+    caller's terminal. Look at the `codex` TUI processes instead: one started on this thread
+    (`codex resume <id>`), else the only one running in the same directory. Ambiguous -> None (new window).
+    """
+    exact, same_dir = [], []
+    for proc in Path('/proc').iterdir():
+        if not proc.name.isdigit():
+            continue
+        args = _cmdline(proc.name)
+        if not args or os.path.basename(args[0]) != 'codex' or any(
+                a in ('app-server', 'exec', 'queue', 'mcp-server') for a in args[1:3]):
+            continue
+        env = _environ(proc.name)
+        if not env.get('TERMINATOR_UUID') or env.get('TERM_PROGRAM') == 'vscode':
+            continue
+        term = {k: env[k] for k in TERM_VARS if k in env}
+        if thread_id and thread_id in args:
+            exact.append(term)
+            continue
+        try:
+            if os.path.realpath(f'/proc/{proc.name}/cwd') == os.path.realpath(cwd):
+                same_dir.append(term)
+        except OSError:
+            pass
+    for found in (exact, same_dir):
+        uuids = {t['TERMINATOR_UUID'] for t in found}
+        if len(uuids) == 1:
+            return found[0]
+        if len(uuids) > 1:
+            return None
+    return None
+
+
+def caller_terminal():
+    """Terminator vars of the caller's terminal, or None when it is not (reliably) a Terminator terminal."""
+    if os.environ.get('TERM_PROGRAM') == 'vscode' or os.environ.get('AGENT_BRIDGE_LAYOUT') == 'window':
+        return None
+    anc = _ancestors()
+    daemon = next((a for a in anc if 'app-server' in a), None)
+    if daemon is None:
+        env = {k: os.environ[k] for k in TERM_VARS if k in os.environ}
+        return env if env.get('TERMINATOR_UUID') else None
+    if any('.vscode' in x or 'chatgpt' in x for x in daemon[:1]):
+        return None                       # Codex in VS Code / the desktop app: no terminal of its own
+    return codex_tui_terminal(os.environ.get('CODEX_THREAD_ID'), os.getcwd())
 
 
 def split_caller_terminal(name):
     """If the caller runs inside a Terminator terminal, split it so both CLIs sit side by side.
-
-    TERMINATOR_UUID is inherited by everything started from a Terminator terminal, including an editor
-    launched from one, so VS Code (TERM_PROGRAM=vscode) and AGENT_BRIDGE_LAYOUT=window always get a window.
-    Returns a status string, or None to fall back to a new window.
-    """
-    term_uuid = os.environ.get('TERMINATOR_UUID')
+    Returns a status string, or None to fall back to a new window."""
+    term = caller_terminal()
     remotinator = shutil.which('remotinator')
-    if (not term_uuid or not remotinator or os.environ.get('TERM_PROGRAM') == 'vscode'
-            or os.environ.get('AGENT_BRIDGE_LAYOUT') == 'window' or under_shared_daemon()):
+    if not term or not remotinator:
         return None
+    env = {k: v for k, v in os.environ.items() if k not in TERM_VARS}
+    env.update(term)                      # talk to the caller's Terminator instance
     try:
-        r = subprocess.run([remotinator, 'vsplit', '-u', term_uuid,
+        r = subprocess.run([remotinator, 'vsplit', '-u', term['TERMINATOR_UUID'],
                             '-x', shlex.join(tmux_cmd('attach-session', '-t', f'={name}'))],
-                           capture_output=True, text=True, timeout=10)
+                           capture_output=True, text=True, timeout=10, env=env)
     except (OSError, subprocess.TimeoutExpired):
         return None
     if r.returncode != 0 or 'rror' in (r.stdout + r.stderr):

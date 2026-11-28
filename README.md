@@ -186,8 +186,9 @@ Skill `ask-codex-live` (trong Claude) và `ask-claude` (trong Codex) đều gọ
   Lần hỏi đầu tạo session mới cho bên kia; các lần sau, kể cả sau khi tắt máy rồi `claude --resume` / mở lại thread
   Codex, đều **vào đúng session đó**. Session mới của bên hỏi thì mới có session mới bên kia.
 - **Thấy và gõ được.** Bên kia chạy bằng **CLI tương tác thật** (`codex resume <id>` / `claude --resume <id>`) trong tmux:
-  - bên hỏi đang ở **Terminator** → mở **pane chia đôi ngay cạnh** (hai CLI nằm cạnh nhau);
-  - hỏi từ **VS Code** (extension Codex, terminal VS Code) hoặc terminal khác → mở **cửa sổ Terminator mới**.
+  - bên hỏi (Claude CLI hoặc Codex CLI) đang ở **Terminator** → mở **pane chia đôi ngay cạnh** (hai CLI nằm cạnh nhau);
+  - hỏi từ **VS Code** (extension Codex, terminal VS Code) hoặc terminal khác → mở **cửa sổ Terminator mới**;
+  - có nhiều Codex CLI cùng thư mục mà không biết cái nào đang hỏi → cửa sổ mới (không đoán pane).
   Tiêu đề và thanh trạng thái ghi cặp ID để biết đúng session. CLI còn mở thì câu hỏi được dán vào; đã đóng thì mở lại.
 - Câu hỏi có đuôi `⟦bridge xxxx⟧` để bridge lấy đúng câu trả lời, không lẫn với câu bạn tự gõ.
 - **Không mất câu trả lời vì timeout.** Agent hỏi theo từng đợt ngắn (`ask --wait 25`); bên kia chưa xong thì bridge trả mã

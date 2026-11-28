@@ -42,3 +42,12 @@
 - **Claude turn end:** one assistant message is written as several entries (thinking, text…), each with
   `stop_reason: end_turn`. The turn now ends at the `system` `stop_hook_summary`/`turn_duration` entry (or after 3 s of
   quiet), not at the first `end_turn` (which returned an empty answer).
+
+## 2026-11-28 — Bridge: split pane next to a Codex CLI caller
+- **What:** for a caller running inside Codex's shared app-server daemon, find the caller's terminal from the
+  interactive `codex` TUI process instead of our own environment: the one started on the thread (`codex resume <id>`),
+  else the only one with a `TERMINATOR_UUID` in the same directory; ambiguous → new window. Commands under the VS Code
+  extension's or desktop app's app-server always get a new window. `remotinator` is called with that TUI's
+  `TERMINATOR_DBUS_*` so it talks to the right Terminator instance.
+- **Why:** the user wants one window with both CLIs side by side; Codex → Claude used to always open a new window.
+- **Verified:** real Codex CLI in Terminator → Claude opened as a split pane in the same window (2026-11-28).
