@@ -31,3 +31,14 @@
 - **Why:** "timeouts" came from the callers, not the peer: Codex's `exec_command` yields after ~10–30 s and the
   model often gives up instead of polling; Claude's Bash tool cuts foreground commands at 2–10 min. Short slices fit
   both.
+
+## 2026-11-28 — Bridge: fixes from a real Codex → Claude end-to-end test
+- **No environment marker for peers.** The CLI Codex runs tool commands in a shared `codex app-server` daemon that
+  outlives the CLI that started it. The daemon was first started by a bridge-launched peer, so its
+  `AGENT_BRIDGE_DEPTH=1` reached every later Codex session and every Codex → Claude ask was refused as "nested".
+  Nested calls are now refused by pair state (the caller session is a recorded peer), and peers get the marker cleared.
+- **No split pane for callers inside that daemon:** its `TERMINATOR_UUID` belongs to whoever started the daemon, so
+  the bridge opens a new window instead of guessing a pane.
+- **Claude turn end:** one assistant message is written as several entries (thinking, text…), each with
+  `stop_reason: end_turn`. The turn now ends at the `system` `stop_hook_summary`/`turn_duration` entry (or after 3 s of
+  quiet), not at the first `end_turn` (which returned an empty answer).

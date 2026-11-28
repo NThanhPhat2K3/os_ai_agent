@@ -23,7 +23,7 @@ FAKE_COMMON = textwrap.dedent('''\
     a = sys.argv[1:]
     with open(os.environ['FAKE_LOG'], 'a') as f:
         f.write(json.dumps({'argv': a, 'leak': [v for v in ('CLAUDE_CODE_SESSION_ID', 'CODEX_THREAD_ID') if v in os.environ],
-                            'depth': os.environ.get('AGENT_BRIDGE_DEPTH')}) + '\\n')
+                            'depth': os.environ.get('AGENT_BRIDGE_DEPTH', '')}) + '\\n')
     if os.environ.get('FAKE_FAIL'):
         sys.exit(1)
     prompt = a[a.index('--') + 1:]
@@ -74,7 +74,14 @@ FAKE_CLAUDE = FAKE_COMMON + textwrap.dedent('''\
         w({'type': 'user', 'message': {'role': 'user', 'content': m}})
         w({'type': 'assistant', 'message': {'stop_reason': 'tool_use', 'content': [{'type': 'text', 'text': 'reading'}]}})
         w({'type': 'user', 'message': {'content': [{'type': 'tool_result', 'content': 'x'}]}})
-        w({'type': 'assistant', 'message': {'stop_reason': 'end_turn', 'content': [{'type': 'text', 'text': 'claude says: ' + first(m)}]}})
+        # real Claude: one message split into several end_turn entries, then a system summary
+        w({'type': 'assistant', 'message': {'id': 'm1', 'stop_reason': 'end_turn', 'content': [{'type': 'thinking', 'thinking': ''}]}})
+        if 'NOSUMMARY' not in m:
+            import time; time.sleep(0.6)
+        w({'type': 'assistant', 'message': {'id': 'm1', 'stop_reason': 'end_turn', 'content': [{'type': 'text', 'text': 'claude says: ' + first(m)}]}})
+        if 'NOSUMMARY' not in m:
+            w({'type': 'system', 'subtype': 'stop_hook_summary'})
+            w({'type': 'system', 'subtype': 'turn_duration'})
     if prompt: answer(prompt[0])
     loop(answer)
 ''')
@@ -133,7 +140,7 @@ class BridgeTmuxTest(unittest.TestCase):
         self.assertEqual(argv[argv.index('--') + 1], tid)
         self.assertEqual(self.pairs()['claude:claude-aaaa1111->codex']['peer_id'], tid)
         first = self.launches()[0]
-        self.assertEqual((first['leak'], first['depth']), ([], '1'))
+        self.assertEqual((first['leak'], first['depth']), ([], ''))   # no marker leaks into a shared daemon
         self.assertIn('read-only', first['argv'])
 
     def test_codex_to_claude_session_id_then_resume(self):
@@ -179,9 +186,15 @@ class BridgeTmuxTest(unittest.TestCase):
         r = self.ask('codex', 'a')
         self.assertEqual(r.returncode, 2)
         self.assertIn('CLAUDE_CODE_SESSION_ID', r.stderr)
-        r = self.ask('claude', 'a', CODEX_THREAD_ID='codex-cccc3333', AGENT_BRIDGE_DEPTH='1')
+        r = self.ask('claude', 'a', CODEX_THREAD_ID='codex-cccc3333', AGENT_BRIDGE_DEPTH='1')   # stale marker: ignored
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.ask('codex', 'a', CLAUDE_CODE_SESSION_ID='claude-aaaa1111')
+        peer = self.pairs()['claude:claude-aaaa1111->codex']['peer_id']
+        n = len(self.launches())
+        r = self.ask('claude', 'call back', CODEX_THREAD_ID=peer)     # the peer itself calls back: refused
         self.assertEqual(r.returncode, 2)
-        self.assertEqual(self.launches(), [])
+        self.assertIn('nested', r.stderr)
+        self.assertEqual(len(self.launches()), n)
 
 
     def test_busy_cli_is_not_pasted_into(self):
@@ -258,6 +271,21 @@ class TurnParsingTest(unittest.TestCase):
         self.assertFalse(t.feed({'type': 'event_msg', 'payload': {'type': 'task_complete', 'turn_id': 'other', 'last_agent_message': 'no'}}))
         self.assertTrue(t.feed({'type': 'event_msg', 'payload': {'type': 'task_complete', 'turn_id': 'mine', 'last_agent_message': 'yes'}}))
         self.assertEqual(t.answer, 'yes')
+
+    def test_claude_answer_spans_several_end_turn_entries(self):
+        t = ClaudeTurn('n4')
+        t.feed({'type': 'user', 'message': {'content': 'q ⟦bridge n4⟧'}})
+        self.assertFalse(t.feed({'type': 'assistant', 'message': {'stop_reason': 'end_turn', 'content': [{'type': 'thinking'}]}}))
+        self.assertFalse(t.feed({'type': 'assistant', 'message': {'stop_reason': 'end_turn', 'content': [{'type': 'text', 'text': 'real answer'}]}}))
+        self.assertTrue(t.feed({'type': 'system', 'subtype': 'stop_hook_summary'}))
+        self.assertEqual(t.answer, 'real answer')
+
+    def test_claude_without_summary_settles_after_quiet(self):
+        t = ClaudeTurn('n5')
+        t.feed({'type': 'user', 'message': {'content': 'q ⟦bridge n5⟧'}})
+        t.feed({'type': 'assistant', 'message': {'stop_reason': 'end_turn', 'content': [{'type': 'text', 'text': 'late'}]}})
+        self.assertTrue(t.settle())
+        self.assertEqual(t.answer, 'late')
 
     def test_claude_interrupt_is_an_error(self):
         t = ClaudeTurn('n2')

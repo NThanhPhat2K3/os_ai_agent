@@ -37,7 +37,6 @@ SESSION_VARS = ('CLAUDE_CODE_SESSION_ID', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT'
                 'CODEX_COMPANION_TRANSCRIPT_PATH', 'CODEX_THREAD_ID', 'CODEX_SESSION_ID', 'CODEX_TOOL_CALL_ID',
                 # these point at the caller's terminal pane, not the peer's
                 'TERMINATOR_UUID', 'TERMINATOR_DBUS_NAME', 'TERMINATOR_DBUS_PATH', 'TMUX', 'TMUX_PANE')
-DEPTH_VAR = 'AGENT_BRIDGE_DEPTH'
 ID_RE = re.compile(r'^[0-9A-Za-z][0-9A-Za-z_-]{7,63}$')
 CLAUDE_READ_TOOLS = 'Read,Grep,Glob,Bash(git diff:*),Bash(git status:*),Bash(git log:*),Bash(git show:*)'
 CLAUDE_EDIT_TOOLS = 'Edit,Write,NotebookEdit'
@@ -108,6 +107,14 @@ def get_pair(d, key):
         return dict(load_pairs(d).get(key, {}))
 
 
+def peer_of(d, agent, sid):
+    """The pair key for which session `sid` of `agent` is the peer, if any."""
+    for k, v in load_pairs(d).items():
+        if v.get('peer') == agent and sid in (v.get('peer_id'), v.get('pending_id')):
+            return k
+    return None
+
+
 def pair_key(caller, sid, to):
     return f'{caller}:{sid}->{to}'
 
@@ -150,11 +157,14 @@ def title_for(caller, sid, to, peer_id):
 
 
 def tmux_start(name, cwd, argv, title):
-    env_wrap = ['env', *[a for v in SESSION_VARS for a in ('-u', v)], f'{DEPTH_VAR}=1']
+    # No marker variable for the peer: Codex runs tool commands in a shared app-server daemon that outlives the
+    # CLI which started it, so any variable set here would leak into every later Codex session.
+    # Nested calls are refused by pair state instead (see peer_of).
+    env_wrap = ['env', *[a for v in SESSION_VARS for a in ('-u', v)], 'AGENT_BRIDGE_DEPTH=']
     tmux('new-session', '-d', '-s', name, '-c', cwd, '-x', '200', '-y', '50', '--', *env_wrap, *argv)
     for opt in (('status-left-length', '90'), ('status-left', f' {title} '), ('status-right', ''),
                 ('window-status-format', ''), ('window-status-current-format', '')):
-        tmux('set-option', '-t', f'={name}', *opt, check=False)
+        tmux('set-option', '-t', f'={name}:', *opt, check=False)   # -t is a target pane: needs the ':'
 
 
 def tmux_paste(name, text):
@@ -162,6 +172,22 @@ def tmux_paste(name, text):
     tmux('paste-buffer', '-p', '-d', '-b', name, '-t', f'={name}:')
     time.sleep(0.5)                       # let the TUI finish the bracketed paste before submitting
     tmux('send-keys', '-t', f'={name}:', 'Enter')
+
+
+def under_shared_daemon():
+    """True when this command runs inside Codex's shared app-server daemon: its environment (TERMINATOR_UUID
+    included) belongs to whichever CLI started the daemon, not to the caller's terminal."""
+    pid = os.getppid()
+    for _ in range(30):
+        if pid <= 1:
+            return False
+        try:
+            if b'app-server' in Path(f'/proc/{pid}/cmdline').read_bytes():
+                return True
+            pid = int(Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            return False
+    return False
 
 
 def split_caller_terminal(name):
@@ -174,7 +200,7 @@ def split_caller_terminal(name):
     term_uuid = os.environ.get('TERMINATOR_UUID')
     remotinator = shutil.which('remotinator')
     if (not term_uuid or not remotinator or os.environ.get('TERM_PROGRAM') == 'vscode'
-            or os.environ.get('AGENT_BRIDGE_LAYOUT') == 'window'):
+            or os.environ.get('AGENT_BRIDGE_LAYOUT') == 'window' or under_shared_daemon()):
         return None
     try:
         r = subprocess.run([remotinator, 'vsplit', '-u', term_uuid,
@@ -329,39 +355,56 @@ def codex_idle(path):
     return open_turns == 0
 
 
-def claude_idle(path):
-    """True when the last conversational entry ends a turn (end_turn or an interrupt)."""
+def claude_idle(path, quiet=3):
+    """True when the turn is over: the system turn summary came last, or an interrupt, or an end_turn entry
+    and the transcript has been quiet for `quiet` s (one message is written as several end_turn entries)."""
     last = None
     for e in _events(path):
-        if e.get('type') in ('user', 'assistant'):
+        if e.get('type') in ('user', 'assistant') or (
+                e.get('type') == 'system' and e.get('subtype') in ClaudeTurn.END_MARKERS):
             last = e
     if last is None:
         return True
+    if last['type'] == 'system':
+        return True
     msg = last.get('message') if isinstance(last.get('message'), dict) else {}
     if last['type'] == 'assistant':
-        return msg.get('stop_reason') == 'end_turn'
+        return msg.get('stop_reason') == 'end_turn' and time.time() - path.stat().st_mtime > quiet
     return '[Request interrupted by user' in _text_of(msg.get('content'))
 
 
 class ClaudeTurn:
+    """Claude writes one assistant message as several entries (thinking, text, ...), each carrying
+    stop_reason=end_turn, so end_turn alone is not the end: the turn ends at the system summary entry
+    (stop_hook_summary / turn_duration) after it, or when the transcript stays quiet (see settle())."""
+    END_MARKERS = ('stop_hook_summary', 'turn_duration')
+
     def __init__(self, nonce):
         self.nonce, self.seen, self.texts, self.answer, self.error = nonce, False, [], None, None
+        self.ended = False
+
+    def settle(self):
+        """Called when the transcript has been quiet for a while after end_turn."""
+        if self.ended and self.answer is None:
+            self.answer = '\n'.join(self.texts)
+        return self.answer is not None
 
     def feed(self, e):
         msg = e.get('message') if isinstance(e.get('message'), dict) else {}
+        if e.get('type') == 'system' and self.ended and e.get('subtype') in self.END_MARKERS:
+            return self.settle()
         if e.get('type') == 'user':
             text = _text_of(msg.get('content'))
             if self.nonce in text:
-                self.seen, self.texts = True, []
+                self.seen, self.texts, self.ended = True, [], False
             elif self.seen and '[Request interrupted by user' in text:
                 self.error = 'interrupted in Claude'
             elif self.seen:
-                self.texts = []           # a tool result: the final answer comes after it
+                self.texts, self.ended = [], False   # a tool result: the final answer comes after it
         elif self.seen and e.get('type') == 'assistant':
             self.texts += [c['text'] for c in msg.get('content', []) if isinstance(c, dict)
                            and c.get('type') == 'text' and c.get('text')]
-            if msg.get('stop_reason') == 'end_turn':
-                self.answer = '\n'.join(self.texts)
+            self.ended = msg.get('stop_reason') == 'end_turn'
         return self.answer is not None or self.error is not None
 
 
@@ -376,6 +419,7 @@ def wait_turn(locate, turn, name, timeout, hint_after=20):
     turn.timed_out = False
     start = time.time()
     deadline, path, pos, buf, hinted = start + timeout, None, 0, '', False
+    quiet_since = time.time()
     while time.time() < deadline:
         if not turn.seen and not hinted and time.time() - start > hint_after:
             hinted = True                 # e.g. a trust/login/update prompt only the user may answer
@@ -385,8 +429,10 @@ def wait_turn(locate, turn, name, timeout, hint_after=20):
         if path:
             with open(path, errors='replace') as f:
                 f.seek(pos)
-                buf += f.read()
+                chunk = f.read()
                 pos = f.tell()
+            if chunk:
+                buf, quiet_since = buf + chunk, time.time()
             *lines, buf = buf.split('\n')
             for line in lines:
                 try:
@@ -394,6 +440,8 @@ def wait_turn(locate, turn, name, timeout, hint_after=20):
                         return turn
                 except (json.JSONDecodeError, AttributeError):
                     continue
+            if hasattr(turn, 'settle') and time.time() - quiet_since > 3 and turn.settle():
+                return turn
         if not tmux_alive(name):
             turn.error = turn.error or 'the peer CLI exited before answering'
             return turn
@@ -427,10 +475,12 @@ def peer_ready(to, peer_id, pair):
 
 
 def cmd_ask(a):
-    if int(os.environ.get(DEPTH_VAR, '0') or 0) >= 1:
-        raise BridgeError('refusing nested bridge call (the peer must not call back through the bridge)', 2)
     to = a.to
     caller, sid = caller_identity(to, a.caller_session)
+    owner = peer_of(state_dir(), caller, sid)
+    if owner:
+        raise BridgeError(f'refusing nested bridge call: this {caller} session is itself the bridge peer of {owner} '
+                          f'(it must not call back through the bridge)', 2)
     message = sys.stdin.read() if a.message == '-' else a.message
     if not message.strip():
         raise BridgeError('empty message', 2)
