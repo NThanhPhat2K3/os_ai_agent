@@ -51,3 +51,11 @@
   `TERMINATOR_DBUS_*` so it talks to the right Terminator instance.
 - **Why:** the user wants one window with both CLIs side by side; Codex → Claude used to always open a new window.
 - **Verified:** real Codex CLI in Terminator → Claude opened as a split pane in the same window (2026-11-28).
+
+## 2026-11-28 — Pin updates
+- context7 4.6.0 → 4.7.0, ccusage 20.0.48 → 20.0.50, tokscale 4.21.0 → 4.22.1, skills-cli 1.7.6 → 1.8.1,
+  trailofbits-skills e4dd0bb → 149d7b2 (only adds an unrelated skill; `modern-cpp` unchanged). All ≥ 14 days old.
+- `install.sh` leaves an existing MCP entry untouched, so Codex's context7 stays on the old version until it is
+  re-added (see README "Cập nhật").
+- Heads-up: Jeffallan/claude-skills is moving skills from `skills/` to `plugin/skills/` (commits still < 14 days).
+  The next bump of that vendor must change its `skills_dir`, or `embedded-systems` breaks (doctor will flag it).

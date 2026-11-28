@@ -1,8 +1,8 @@
 {
-  "context7": "4.6.0",
+  "context7": "4.7.0",
   "serena": "2.1.0",
   "basic-memory": "1.0.0",
-  "ccusage": "20.0.48",
-  "tokscale": "4.21.0",
-  "skills-cli": "1.7.6"
+  "ccusage": "20.0.50",
+  "tokscale": "4.22.1",
+  "skills-cli": "1.8.1"
 }

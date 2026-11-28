@@ -164,7 +164,7 @@ Ledger và backup nằm ở `~/.local/state/os_ai_agent/`. Mục nào bạn đã
 
 Không dùng (Codex review / trùng): `docx`/`xlsx`/`pptx` của Anthropic (script có thể `LD_PRELOAD` thư viện từ `/tmp`),
 `pdf` (Codex có plugin `pdf` chính hãng), bộ `sickn33/agentic-awesome-skills` (495 MB, gom lại, nhiều skill trùng/không rõ nguồn).
-Chờ đủ 14 ngày: `embedded-gui-production` của Stitch (Claude). `generate-design` của Stitch bị từ chối vì tên trong file
+(`embedded-gui-production` không có trong `google-labs-code/stitch-skills`, kiểm tra 2026-11-28.) `generate-design` của Stitch bị từ chối vì tên trong file
 (`stitch::generate-design`) không khớp thư mục.
 
 **Lớp bọc (wrapper):** skill cục bộ trong `skills/<tên>/` có `SKILL.md` ngắn và `upstream.md` là symlink tới file đã pin trong
@@ -230,6 +230,8 @@ Phiên bản nằm ở `pins.json` và commit của các submodule trong `vendor
 1. `scripts/check-updates` (hoặc tab Cập nhật) để xem đề xuất.
 2. Sửa `pins.json`, hoặc `git -C vendor/<repo> checkout <sha>`.
 3. `scripts/doctor.sh`, nhờ agent còn lại review, `scripts/install.sh` (với token tools: `--with-token-tools`), rồi **commit và push**.
+4. Đổi pin `context7`: installer không ghi đè MCP đã có, nên với Codex chạy `codex mcp remove context7 && scripts/install.sh`
+   (installer thêm lại đúng bản pin và ghi ledger). Claude dùng context7 bản HTTP nên không cần.
 
 **Đồng bộ giữa các máy:** máy nào sửa thì commit + push; máy khác chỉ cần
 `git pull --recurse-submodules && scripts/install.sh && scripts/doctor.sh`.
