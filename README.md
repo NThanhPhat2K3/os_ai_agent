@@ -129,8 +129,8 @@ Ledger và backup nằm ở `~/.local/state/os_ai_agent/`. Mục nào bạn đã
 | `safety/claude/permissions.json` | Claude: luật tương đương | merge vào `~/.claude/settings.json` |
 | `mcp/servers.toml` | Tài liệu về các MCP server (client không đọc file này) | — |
 | `templates/project/` | `AGENTS.md`, `.clangd`, `docs/decisions.md` mẫu cho dự án mới | copy thủ công |
-| `tools/skill_hub/` | Code Python dùng chung (catalog, engine kiểm tra cập nhật) | các script |
-| `scripts/` | `install.sh`, `doctor.sh`, `uninstall.sh`, `report`, `add-skill`, `check-updates`, `tokens` | — |
+| `tools/skill_hub/`, `tools/agent_bridge/` | Code Python dùng chung (catalog, engine kiểm tra cập nhật, bridge Claude ⇄ Codex) | các script, skill |
+| `scripts/` | `install.sh`, `doctor.sh`, `uninstall.sh`, `report`, `add-skill`, `check-updates`, `tokens`, `agent-bridge` | — |
 | `tests/` | `python3 -m unittest` | — |
 
 ## 🧰 Lệnh hằng ngày
@@ -142,12 +142,13 @@ Ledger và backup nằm ở `~/.local/state/os_ai_agent/`. Mục nào bạn đã
 | `scripts/check-updates` | Skill/tool nào có bản mới (không đề xuất bản < 14 ngày, không bao giờ hạ cấp) |
 | `scripts/tokens` / `tokens weekly` / `tokens tui` | Token Claude + Codex (cần `--with-token-tools`) |
 | `scripts/add-skill owner/repo ten-skill --dry-run` | Thử thêm một skill |
+| `scripts/agent-bridge status --all` | Các cặp session Claude ⇄ Codex đã ghép (xem mục *Claude ⇄ Codex*) |
 
 ## 🧩 Skill và opensource đang dùng
 
 | Thành phần | Trạng thái | Vì sao |
 |---|---|---|
-| `ask-claude`, `ask-codex-live` | Bật (tự viết) | Claude ⇄ Codex gọi nhau; `ask-codex-live` gửi vào session Codex đang mở để bạn xem realtime |
+| `ask-claude`, `ask-codex-live` | Bật (tự viết) | Claude ⇄ Codex gọi nhau qua `scripts/agent-bridge`: mỗi session giữ **một** session của bên kia (resume được sau khi tắt máy); bên kia chạy CLI thật, mở cạnh bạn trong Terminator |
 | superpowers: `systematic-debugging`, `test-driven-development`, `verification-before-completion` | Bật chọn lọc | Bộ ba khép kín. `writing-plans` kéo theo 3 skill khác nên chưa bật |
 | `embedded-systems` (Jeffallan/claude-skills, MIT, 12.5k★) | Bật | Firmware MCU, RTOS, ngắt, DMA, tiết kiệm năng lượng (STM32, ESP32, FreeRTOS) |
 | `modern-cpp` (trailofbits/skills, CC-BY-SA-4.0, 8.4k★) | Bật | C++ hiện đại hướng an toàn. Luôn theo chuẩn C++ của dự án (embedded thường C++11/14/17) |
@@ -176,6 +177,28 @@ Claude. Skill có `notes` (cảnh báo đã biết) được hiển thị màu c
 | ccusage, tokscale | Tùy chọn `--with-token-tools` | Báo cáo / dashboard token, offline, tắt telemetry, ẩn cột tiền |
 | Serena, basic-memory | Tùy chọn | Điều hướng code qua clangd; trí nhớ chung ở `~/agent-memory` (ngoài git) |
 | skills CLI (`vercel-labs/skills`) | Chỉ theo dõi | Bản đủ tuổi chưa pin được commit |
+
+## 🤝 Claude ⇄ Codex (session bridge)
+
+Skill `ask-codex-live` (trong Claude) và `ask-claude` (trong Codex) đều gọi `scripts/agent-bridge`:
+
+- **Một session ↔ một session.** Bridge đọc ID session của bên hỏi (`CLAUDE_CODE_SESSION_ID` / `CODEX_THREAD_ID`).
+  Lần hỏi đầu tạo session mới cho bên kia; các lần sau, kể cả sau khi tắt máy rồi `claude --resume` / mở lại thread
+  Codex, đều **vào đúng session đó**. Session mới của bên hỏi thì mới có session mới bên kia.
+- **Thấy và gõ được.** Bên kia chạy bằng **CLI tương tác thật** (`codex resume <id>` / `claude --resume <id>`) trong tmux:
+  - bên hỏi đang ở **Terminator** → mở **pane chia đôi ngay cạnh** (hai CLI nằm cạnh nhau);
+  - hỏi từ **VS Code** (extension Codex, terminal VS Code) hoặc terminal khác → mở **cửa sổ Terminator mới**.
+  Tiêu đề và thanh trạng thái ghi cặp ID để biết đúng session. CLI còn mở thì câu hỏi được dán vào; đã đóng thì mở lại.
+- Câu hỏi có đuôi `⟦bridge xxxx⟧` để bridge lấy đúng câu trả lời, không lẫn với câu bạn tự gõ.
+- Mặc định **không sửa file**: Codex `-s read-only` (muốn làm gì ngoài sandbox phải hỏi bạn trong pane), Claude bị cấm Edit/Write
+  (lệnh khác phải hỏi bạn). Chỉ cho sửa khi bạn yêu cầu (`--write`). Bên được hỏi không được hỏi ngược lại qua bridge.
+- Bridge **không dán** vào CLI đang bận hoặc đang hiện hộp thoại (Trust, cập nhật, xin quyền): nó báo lại kèm ảnh màn hình chữ.
+- Lần đầu CLI chạy ở một thư mục có thể hỏi *Trust this folder?*: bạn tự trả lời trong pane/cửa sổ đó (agent không tự bấm).
+- `scripts/agent-bridge status --all` xem các cặp; `agent-bridge open --to codex|claude` hiện lại CLI của cặp;
+  `AGENT_BRIDGE_LAYOUT=window` để luôn mở cửa sổ riêng thay vì chia pane.
+- Cần `terminator` và `tmux` (`sudo apt install -y terminator tmux`). Không có màn hình thì vẫn hỏi được:
+  xem bằng `tmux -L agent-bridge attach -t <tên>` (bridge in ra lệnh này).
+- Codex chạy bridge cần quyền ngoài sandbox (mở cửa sổ, mạng, ghi `~/.local/state/os_ai_agent/bridge/pairs.json`): Codex sẽ xin phép.
 
 ## ➕ Thêm hoặc gỡ skill
 
@@ -248,4 +271,5 @@ Vẫn không được: chạy `scripts/doctor.sh`, dán toàn bộ output cho ag
   thiết bị cần quyền ở mức hệ điều hành (nhóm `dialout`, udev).
 - Codex rules đang ở mức *experimental*; định dạng log Codex/Claude có thể đổi theo phiên bản.
 - Rollout log của Codex và log của Claude có thể chứa bí mật: không copy vào memory hay git.
-- Lượt Codex chạy qua `codex queue` hay dừng sớm với việc build lớn; hợp với review. Việc lớn nên gõ trực tiếp vào Codex.
+- Bridge dán câu hỏi vào CLI bên kia: nếu lúc đó bạn đang gõ dở trong ô nhập của CLI đó, chữ sẽ bị trộn. Đừng gõ vào pane bên kia khi agent đang hỏi.
+- Đừng mở cùng session bên kia ở nơi khác (VS Code, terminal khác) cùng lúc: hai tiến trình cùng ghi một session.
